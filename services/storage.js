@@ -1,23 +1,28 @@
 import { openDatabase } from './database';
 
-// Salvar transação no banco de dados
 export async function salvarTransacao(descricao, valor, tipo) {
   const db = await openDatabase();
-  const data = new Date().toISOString();
+  
+  // Captura a data e horário atuais
+  const agora = new Date();
+  const dataFormatada = `${agora.toLocaleDateString()} ${agora.toLocaleTimeString()}`; // Ex: "12/03/2025 14:30"
 
   await db.runAsync(
     'INSERT INTO transacoes (descricao, valor, tipo, data) VALUES (?, ?, ?, ?)',
-    descricao, valor, tipo, data
+    [descricao, valor, tipo, dataFormatada] // 🔥 Agora salvamos data e horário
   );
 
   console.log('Transação salva com sucesso!');
 }
 
+
+
 // Carregar todas as transações
 export async function carregarTransacoes() {
   const db = await openDatabase();
-  return await db.getAllAsync('SELECT * FROM transacoes');
+  return await db.getAllAsync('SELECT * FROM transacoes ORDER BY id DESC'); // 🔥 Ordena do mais recente para o mais antigo
 }
+
 
 // Atualizar uma transação
 export async function atualizarTransacao(id, descricao, valor, tipo) {

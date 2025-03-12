@@ -1,41 +1,51 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, Dimensions, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, Dimensions, ScrollView, FlatList } from 'react-native';
 import { carregarTransacoes } from '../services/storage';
-import { getCotacaoDolar } from '../services/api';
+import { getCotacoes } from '../services/api'; // API para múltiplas cotações
 import { LineChart } from 'react-native-chart-kit';
 import { useFocusEffect } from '@react-navigation/native';
 
 export default function Dashboard() {
-  const [cotacaoDolar, setCotacaoDolar] = useState(null);
+  const [cotacoes, setCotacoes] = useState(null);
   const [saldo, setSaldo] = useState(0);
   const [transacoes, setTransacoes] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useFocusEffect(
-    useCallback(() => {
-      async function fetchData() {
-        try {
-          setLoading(true);
+useFocusEffect(
+  useCallback(() => {
+    let interval;
 
-          const cotacao = await getCotacaoDolar();
-          setCotacaoDolar(cotacao);
-          const dadosTransacoes = await carregarTransacoes();
-          setTransacoes(dadosTransacoes);
+    async function fetchData() {
+      try {
+        setLoading(true);
+        const dadosCotacoes = await getCotacoes(); 
+        setCotacoes(dadosCotacoes);
 
-          const saldoAtual = dadosTransacoes.reduce(
-            (acc, item) => acc + (item.tipo === 'receita' ? item.valor : -item.valor),
-            0
-          );
-          setSaldo(saldoAtual);
-        } catch (error) {
-          console.error('Erro ao carregar transações:', error);
-        } finally {
-          setLoading(false);
-        }
+        const dadosTransacoes = await carregarTransacoes();
+        setTransacoes(dadosTransacoes);
+
+        const saldoAtual = dadosTransacoes.reduce(
+          (acc, item) => acc + (item.tipo === 'receita' ? item.valor : -item.valor),
+          0
+        );
+        setSaldo(saldoAtual);
+      } catch (error) {
+        console.error('Erro ao carregar dados:', error);
+      } finally {
+        setLoading(false);
       }
-      fetchData();
-    }, [])
-  );
+    }
+
+    fetchData(); 
+
+    interval = setInterval(fetchData, 1800000);
+
+    return () => {
+      clearInterval(interval); 
+    };
+  }, [])
+);
+
 
   const { dataReceitas, dataDespesas, dataLabels } = useMemo(() => {
     let acumuladoReceita = 0;
@@ -44,7 +54,9 @@ export default function Dashboard() {
     const despesasCalc = [];
     const labelsCalc = [];
 
-    transacoes.forEach((t, idx) => {
+    const transacoesOrdenadas = [...transacoes].reverse(); 
+
+    transacoesOrdenadas.forEach((t, idx) => {
       if (t.tipo === 'receita') {
         acumuladoReceita += t.valor;
       } else {
@@ -63,12 +75,12 @@ export default function Dashboard() {
     datasets: [
       {
         data: dataReceitas,
-        color: (opacity = 1) => `rgba(255, 165, 0, ${opacity})`, // Laranja
+        color: (opacity = 1) => `rgba(255, 165, 0, ${opacity})`, 
         strokeWidth: 2,
       },
       {
         data: dataDespesas,
-        color: (opacity = 1) => `rgba(30, 144, 255, ${opacity})`, // Azul
+        color: (opacity = 1) => `rgba(30, 144, 255, ${opacity})`, 
         strokeWidth: 2,
       },
     ],
@@ -77,9 +89,19 @@ export default function Dashboard() {
 
   const screenWidth = Dimensions.get('window').width - 32;
 
+  // Lista de moedas para o carrossel
+  const moedas = [
+    { nome: 'Dólar', sigla: 'USD', valor: cotacoes?.usd, simbolo: '💵' },
+    { nome: 'Euro', sigla: 'EUR', valor: cotacoes?.eur, simbolo: '💶' },
+    { nome: 'Libra', sigla: 'GBP', valor: cotacoes?.gbp, simbolo: '💷' },
+    { nome: 'Bitcoin', sigla: 'BTC', valor: cotacoes?.btc, simbolo: '₿' },
+  ];
+
   return (
     <ScrollView contentContainerStyle={styles.scrollContainer}>
       <View style={styles.container}>
+        
+        {/* 🔥 Exibição do Saldo */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Saldo</Text>
           <Text style={styles.balanceValue}>
@@ -87,7 +109,8 @@ export default function Dashboard() {
           </Text>
         </View>
 
-        <View style={styles.card}>
+                {/* 🔥 Gráfico de Transações */}
+                <View style={styles.card}>
           <Text style={styles.cardTitle}>Gráfico de Transações</Text>
           {dataLabels.length > 0 ? (
             <LineChart
@@ -114,16 +137,33 @@ export default function Dashboard() {
           )}
         </View>
 
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Cotação do Dólar</Text>
-          {cotacaoDolar ? (
-            <Text style={styles.balanceValue}>
-              1 USD = {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(cotacaoDolar)}
-            </Text>
-          ) : (
-            <ActivityIndicator size="large" color="#00aced" />
-          )}
-        </View>
+        <Text style={styles.sectionTitle}>Cotação das Moedas</Text>
+{loading ? (
+  <ActivityIndicator size="large" color="#00aced" />
+) : (
+  <FlatList
+    data={moedas}
+    horizontal
+    keyExtractor={(item) => item.sigla}
+    showsHorizontalScrollIndicator={false}
+    contentContainerStyle={styles.carouselContainer}
+    snapToAlignment="center"
+    decelerationRate="fast"
+    renderItem={({ item }) => (
+      <View style={styles.moedaCard}>
+        <Text style={styles.moedaNome}>
+          {item.simbolo} {item.nome}
+        </Text>
+        <Text style={styles.moedaCotacao}>
+          <Text style={styles.moedaDestaque}> R$ {item.valor?.toFixed(2)} </Text> = 1{item.sigla}
+        </Text>
+        <Text style={styles.moedaConvertido}>
+          <Text style={styles.moedaDestaque}>{saldo.toFixed(2)} BRL</Text> = {(saldo / item.valor).toFixed(4)} {item.sigla}
+        </Text>
+      </View>
+    )}
+  />
+)}
       </View>
     </ScrollView>
   );
@@ -133,46 +173,93 @@ const styles = StyleSheet.create({
   scrollContainer: {
     flexGrow: 1,
     backgroundColor: '#1E1E1E',
-    padding: 16,
-    justifyContent: 'center',
+    paddingVertical: 20,
+    paddingHorizontal: 16,
   },
   container: {
     flex: 1,
     alignItems: 'center',
   },
+
   card: {
+    marginTop: 50,
     backgroundColor: '#292929',
     borderRadius: 12,
-    padding: 20,
+    padding: 18,
     marginVertical: 10,
     width: '100%',
     alignItems: 'center',
-    // Sombra para iOS
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 3,
-    // Elevação para Android
-    elevation: 5,
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
   },
   cardTitle: {
     fontSize: 20,
     color: '#FFFFFF',
     fontWeight: '600',
-    marginBottom: 12,
+    marginBottom: 8,
+    textAlign: 'center',
   },
   balanceValue: {
-    fontSize: 26,
+    fontSize: 28,
     color: '#4CAF50',
     fontWeight: 'bold',
   },
-  chartStyle: {
-    marginVertical: 8,
-    borderRadius: 12,
+  sectionTitle: {
+    marginTop: 20,
+    fontSize: 20,
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+    marginBottom: 10,
+    textAlign: 'center',
   },
-  chartMessage: {
-    color: '#CCCCCC',
-    marginTop: 16,
-    fontSize: 16,
+
+  carouselContainer: {
+    paddingHorizontal: 10,
+    paddingBottom: 10,
+  },
+  moedaCard: {
+    backgroundColor: '#333',
+    marginTop: 40,
+    borderRadius: 12,
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+    marginHorizontal: 10, 
+    width: Dimensions.get('window').width * 0.45, 
+    height: 110,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: '#444',
+  },
+  moedaNome: {
+    fontSize: 18,
+    color: '#FFD700',
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  moedaCotacao: {
+    fontSize: 14,
+    color: '#FFFFFF',
+    marginBottom: 2,
+    textAlign: 'center',
+  },
+  moedaConvertido: {
+    fontSize: 13,
+    color: '#A0A0A0',
+    textAlign: 'center',
+  },
+  moedaDestaque: {
+    fontSize: 15,
+    color: '#4CAF50',
+    fontWeight: 'bold',
   },
 });
+

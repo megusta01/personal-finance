@@ -14,16 +14,14 @@ import {
 import { salvarTransacao, atualizarTransacao } from '../services/storage';
 
 export default function Transacoes({ route, navigation }) {
-  // Recebe a transação para edição, se existir, e verifica se há um id válido
+ 
   const transacaoEditando = route.params?.transacaoEditando;
   const isEdit = transacaoEditando;
 
-  // Estados para os campos do formulário
   const [descricao, setDescricao] = useState('');
   const [valor, setValor] = useState('');
   const [tipo, setTipo] = useState('receita');
 
-  // Preenche os campos se for edição; caso contrário, garante campos vazios para nova transação
   useEffect(() => {
     if (isEdit) {
       setDescricao(transacaoEditando.descricao);
@@ -34,18 +32,22 @@ export default function Transacoes({ route, navigation }) {
       setValor('');
       setTipo('receita');
     }
-  }, [isEdit, transacaoEditando]);
+  
+    const unsubscribe = navigation.addListener('focus', () => {
+      navigation.setParams({ transacaoEditando: null });
+    });
+  
+    return unsubscribe;
+  }, [navigation, isEdit, transacaoEditando]);
 
-  // Limpa os parâmetros de edição ao focar na tela (para evitar persistência)
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
-      // Quando a tela ganhar foco, reseta os parâmetros de edição
+      
       navigation.setParams({ transacao: null });
     });
     return unsubscribe;
   }, [navigation]);
 
-  // Função para salvar ou atualizar a transação
   const handleSalvar = async () => {
     if (!descricao.trim() || !valor.trim()) {
       Alert.alert('Erro', 'Preencha todos os campos');
@@ -67,12 +69,10 @@ export default function Transacoes({ route, navigation }) {
         Alert.alert('Sucesso', 'Transação adicionada!');
       }
 
-      // Reseta os campos
       setDescricao('');
       setValor('');
       setTipo('receita');
 
-      // Limpa os parâmetros de edição e retorna para o histórico
       navigation.setParams({ transacao: null });
       navigation.navigate('Histórico');
     } catch (error) {
@@ -88,7 +88,7 @@ export default function Transacoes({ route, navigation }) {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Transações</Text>
+          <Text style={styles.headerTitle}>TRANSAÇÕES</Text>
           <Text style={styles.headerSubtitle}>
             {isEdit ? 'Editar Transação' : 'Nova Transação'}
           </Text>
@@ -156,10 +156,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   header: {
+    
     alignItems: 'center',
     marginBottom: 30,
   },
   headerTitle: {
+    marginTop: 40,
     color: '#fff',
     fontSize: 24,
     fontWeight: 'bold',
