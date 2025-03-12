@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   TextInput,
@@ -11,17 +11,42 @@ import {
   TouchableWithoutFeedback,
   Keyboard,
 } from 'react-native';
-import { salvarTransacao } from '../services/storage';
-import { Transacao } from '../../types/Transacao';
-import { v4 as uuidv4 } from 'uuid';
+import { salvarTransacao, atualizarTransacao } from '../services/storage';
 
-export default function Transacoes() {
+export default function Transacoes({ route, navigation }) {
+  // Recebe a transação para edição, se existir, e verifica se há um id válido
+  const transacaoEditando = route.params?.transacaoEditando;
+  const isEdit = transacaoEditando;
+
+  // Estados para os campos do formulário
   const [descricao, setDescricao] = useState('');
   const [valor, setValor] = useState('');
-  const [tipo, setTipo] = useState<'receita' | 'despesa'>('receita');
+  const [tipo, setTipo] = useState('receita');
 
+  // Preenche os campos se for edição; caso contrário, garante campos vazios para nova transação
+  useEffect(() => {
+    if (isEdit) {
+      setDescricao(transacaoEditando.descricao);
+      setValor(String(transacaoEditando.valor));
+      setTipo(transacaoEditando.tipo);
+    } else {
+      setDescricao('');
+      setValor('');
+      setTipo('receita');
+    }
+  }, [isEdit, transacaoEditando]);
+
+  // Limpa os parâmetros de edição ao focar na tela (para evitar persistência)
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      // Quando a tela ganhar foco, reseta os parâmetros de edição
+      navigation.setParams({ transacao: null });
+    });
+    return unsubscribe;
+  }, [navigation]);
+
+  // Função para salvar ou atualizar a transação
   const handleSalvar = async () => {
-    console.log('handleSalvar acionado');
     if (!descricao.trim() || !valor.trim()) {
       Alert.alert('Erro', 'Preencha todos os campos');
       return;
@@ -33,23 +58,23 @@ export default function Transacoes() {
       return;
     }
 
-    const novaTransacao: Transacao = {
-      id: uuidv4(),
-      descricao: descricao.trim(),
-      valor: valorNumerico,
-      tipo,
-      data: new Date().toISOString(),
-    };
-
-    console.log('Transação a salvar:', novaTransacao);
-
     try {
-      await salvarTransacao(novaTransacao);
-      console.log('Transação salva com sucesso');
-      Alert.alert('Sucesso', 'Transação adicionada!');
+      if (isEdit) {
+        await atualizarTransacao(transacaoEditando.id, descricao.trim(), valorNumerico, tipo);
+        Alert.alert('Sucesso', 'Transação atualizada!');
+      } else {
+        await salvarTransacao(descricao.trim(), valorNumerico, tipo);
+        Alert.alert('Sucesso', 'Transação adicionada!');
+      }
+
+      // Reseta os campos
       setDescricao('');
       setValor('');
       setTipo('receita');
+
+      // Limpa os parâmetros de edição e retorna para o histórico
+      navigation.setParams({ transacao: null });
+      navigation.navigate('Histórico');
     } catch (error) {
       console.error('Erro ao salvar transação:', error);
       Alert.alert('Erro', 'Não foi possível salvar a transação.');
@@ -62,13 +87,13 @@ export default function Transacoes() {
         style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        {/* Cabeçalho */}
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>FinanceTracker</Text>
-          <Text style={styles.headerSubtitle}>Nova Transação</Text>
+          <Text style={styles.headerTitle}>Transações</Text>
+          <Text style={styles.headerSubtitle}>
+            {isEdit ? 'Editar Transação' : 'Nova Transação'}
+          </Text>
         </View>
 
-        {/* Card central */}
         <View style={styles.card}>
           <Text style={styles.label}>Valor</Text>
           <TextInput
@@ -91,7 +116,6 @@ export default function Transacoes() {
 
           <Text style={styles.label}>Tipo de Transação</Text>
           <View style={styles.radioGroup}>
-            {/* Radio para receita */}
             <TouchableOpacity
               style={styles.radioOption}
               onPress={() => setTipo('receita')}
@@ -102,7 +126,6 @@ export default function Transacoes() {
               <Text style={styles.radioLabel}>Receita</Text>
             </TouchableOpacity>
 
-            {/* Radio para despesa */}
             <TouchableOpacity
               style={styles.radioOption}
               onPress={() => setTipo('despesa')}
@@ -115,9 +138,10 @@ export default function Transacoes() {
           </View>
         </View>
 
-        {/* Botão de salvar */}
         <TouchableOpacity style={styles.saveButton} onPress={handleSalvar}>
-          <Text style={styles.saveButtonText}>Salvar Transação</Text>
+          <Text style={styles.saveButtonText}>
+            {isEdit ? 'Atualizar Transação' : 'Salvar Transação'}
+          </Text>
         </TouchableOpacity>
       </KeyboardAvoidingView>
     </TouchableWithoutFeedback>
@@ -132,79 +156,90 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 30,
   },
   headerTitle: {
     color: '#fff',
-    fontSize: 18,
+    fontSize: 24,
     fontWeight: 'bold',
   },
   headerSubtitle: {
     color: '#ccc',
-    fontSize: 16,
+    fontSize: 18,
+    marginTop: 4,
   },
   card: {
     backgroundColor: '#2C2C2C',
-    borderRadius: 8,
-    padding: 16,
-    marginBottom: 20,
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 30,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 6,
   },
   label: {
     color: '#fff',
     fontSize: 16,
     marginBottom: 8,
-    fontWeight: 'bold',
+    fontWeight: '600',
   },
   input: {
     backgroundColor: '#3A3A3A',
-    borderRadius: 4,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     color: '#fff',
-    marginBottom: 16,
+    marginBottom: 20,
+    fontSize: 16,
   },
   radioGroup: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
+    justifyContent: 'space-around',
+    marginTop: 10,
   },
   radioOption: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginRight: 24,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#FFF',
   },
   radioCircle: {
     width: 20,
     height: 20,
     borderRadius: 10,
     borderWidth: 2,
-    borderColor: '#fff',
-    marginRight: 6,
+    borderColor: '#FFF',
     justifyContent: 'center',
     alignItems: 'center',
+    marginRight: 8,
   },
   radioInner: {
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: '#fff',
+    backgroundColor: '#FFF',
   },
   radioLabel: {
-    color: '#fff',
+    color: '#FFF',
     fontSize: 14,
+    fontWeight: '500',
   },
   saveButton: {
     backgroundColor: '#FF9E2C',
-    borderRadius: 25,
-    paddingVertical: 14,
+    borderRadius: 30,
+    paddingVertical: 16,
     alignItems: 'center',
+    marginHorizontal: 20,
   },
   saveButtonText: {
     color: '#1C1C1C',
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: 'bold',
   },
 });

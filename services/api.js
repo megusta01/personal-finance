@@ -4,7 +4,7 @@ const api = axios.create({
   baseURL: 'https://economia.awesomeapi.com.br/json/',
 });
 
-export const getCotacaoDolar = async (): Promise<number | null> => {
+export const getCotacaoDolar = async () => {
   try {
     const response = await api.get('last/USD-BRL');
     return parseFloat(response.data.USDBRL.bid);
