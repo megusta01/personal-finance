@@ -2,7 +2,6 @@ import * as SQLite from 'expo-sqlite';
 
 let db;
 
-// Função para abrir o banco de dados de forma assíncrona
 export async function openDatabase() {
   if (!db) {
     db = await SQLite.openDatabaseAsync('finance.db');
@@ -12,10 +11,10 @@ export async function openDatabase() {
 
 // Criar a tabela se não existir
 export async function initializeDatabase() {
-    const db = await openDatabase();
-    // await db.execAsync(`DROP TABLE IF EXISTS transacoes;`);
+  const db = await openDatabase();
+  // await db.execAsync(`DROP TABLE IF EXISTS transacoes;`);
 
-    await db.execAsync(`
+  await db.execAsync(`
       PRAGMA journal_mode = WAL;
       CREATE TABLE IF NOT EXISTS transacoes (
         id INTEGER PRIMARY KEY AUTOINCREMENT, 
@@ -25,5 +24,5 @@ export async function initializeDatabase() {
         data TEXT NOT NULL
       );
     `);
-    console.log('Banco de dados inicializado com sucesso!');
-  }
+  console.log('Banco de dados inicializado com sucesso!');
+}

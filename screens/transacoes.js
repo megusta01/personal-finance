@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   TextInput,
@@ -11,42 +11,12 @@ import {
   TouchableWithoutFeedback,
   Keyboard,
 } from 'react-native';
-import { salvarTransacao, atualizarTransacao } from '../services/storage';
+import { salvarTransacao } from '../services/storage';
 
-export default function Transacoes({ route, navigation }) {
- 
-  const transacaoEditando = route.params?.transacaoEditando;
-  const isEdit = transacaoEditando;
-
+export default function Transacoes({ navigation }) {
   const [descricao, setDescricao] = useState('');
   const [valor, setValor] = useState('');
   const [tipo, setTipo] = useState('receita');
-
-  useEffect(() => {
-    if (isEdit) {
-      setDescricao(transacaoEditando.descricao);
-      setValor(String(transacaoEditando.valor));
-      setTipo(transacaoEditando.tipo);
-    } else {
-      setDescricao('');
-      setValor('');
-      setTipo('receita');
-    }
-  
-    const unsubscribe = navigation.addListener('focus', () => {
-      navigation.setParams({ transacaoEditando: null });
-    });
-  
-    return unsubscribe;
-  }, [navigation, isEdit, transacaoEditando]);
-
-  useEffect(() => {
-    const unsubscribe = navigation.addListener('focus', () => {
-      
-      navigation.setParams({ transacao: null });
-    });
-    return unsubscribe;
-  }, [navigation]);
 
   const handleSalvar = async () => {
     if (!descricao.trim() || !valor.trim()) {
@@ -61,19 +31,11 @@ export default function Transacoes({ route, navigation }) {
     }
 
     try {
-      if (isEdit) {
-        await atualizarTransacao(transacaoEditando.id, descricao.trim(), valorNumerico, tipo);
-        Alert.alert('Sucesso', 'Transação atualizada!');
-      } else {
-        await salvarTransacao(descricao.trim(), valorNumerico, tipo);
-        Alert.alert('Sucesso', 'Transação adicionada!');
-      }
-
+      await salvarTransacao(descricao.trim(), valorNumerico, tipo);
+      Alert.alert('Sucesso', 'Transação adicionada!');
       setDescricao('');
       setValor('');
       setTipo('receita');
-
-      navigation.setParams({ transacao: null });
       navigation.navigate('Histórico');
     } catch (error) {
       console.error('Erro ao salvar transação:', error);
@@ -89,9 +51,7 @@ export default function Transacoes({ route, navigation }) {
       >
         <View style={styles.header}>
           <Text style={styles.headerTitle}>TRANSAÇÕES</Text>
-          <Text style={styles.headerSubtitle}>
-            {isEdit ? 'Editar Transação' : 'Nova Transação'}
-          </Text>
+          <Text style={styles.headerSubtitle}>Nova Transação</Text>
         </View>
 
         <View style={styles.card}>
@@ -139,9 +99,7 @@ export default function Transacoes({ route, navigation }) {
         </View>
 
         <TouchableOpacity style={styles.saveButton} onPress={handleSalvar}>
-          <Text style={styles.saveButtonText}>
-            {isEdit ? 'Atualizar Transação' : 'Salvar Transação'}
-          </Text>
+          <Text style={styles.saveButtonText}>Salvar Transação</Text>
         </TouchableOpacity>
       </KeyboardAvoidingView>
     </TouchableWithoutFeedback>
@@ -156,7 +114,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   header: {
-    
     alignItems: 'center',
     marginBottom: 30,
   },

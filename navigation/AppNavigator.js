@@ -20,7 +20,6 @@ export default function AppNavigator() {
       }}
     >
       <Stack.Screen name="Home" component={BottomTabNavigator} options={{ headerShown: false }} />
-      <Stack.Screen name="Transacoes" component={Transacoes} />
     </Stack.Navigator>
   );
 }
