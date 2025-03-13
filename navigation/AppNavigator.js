@@ -1,8 +1,8 @@
 import React from 'react';
 import { createStackNavigator } from '@react-navigation/stack';
 
-import BottomTabNavigator from './BottomTabNavigator'; // Importa a navegação por abas
-import Transacoes from '../screens/transacoes'; // Importa a tela de transações
+import BottomTabNavigator from './BottomTabNavigator'; 
+import Transacoes from '../screens/transacoes'; 
 
 const Stack = createStackNavigator();
 

@@ -4,7 +4,6 @@ const api = axios.create({
   baseURL: 'https://economia.awesomeapi.com.br/json/',
 });
 
-// Buscar cotações de várias moedas
 export const getCotacoes = async () => {
   try {
     const response = await api.get('last/USD-BRL,EUR-BRL,GBP-BRL,BTC-BRL');

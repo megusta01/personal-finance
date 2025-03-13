@@ -12,13 +12,13 @@ export default function BottomTabNavigator() {
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
-        headerShown: false, // Remove o cabeçalho padrão
-        tabBarActiveTintColor: '#FF4500', // Cor do ícone ativo
-        tabBarInactiveTintColor: 'gray', // Cor do ícone inativo
+        headerShown: false, 
+        tabBarActiveTintColor: '#FF4500', 
+        tabBarInactiveTintColor: 'gray', 
         tabBarStyle: {
-          backgroundColor: '#1C1C1C', // Cor de fundo da barra
-          borderTopWidth: 0, // Remove a borda superior
-          paddingBottom: 5, // Ajuste do padding inferior
+          backgroundColor: '#1C1C1C', 
+          borderTopWidth: 0, 
+          paddingBottom: 5,
         },
         tabBarIcon: ({ color, size }) => {
           let iconName;

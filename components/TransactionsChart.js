@@ -1,4 +1,3 @@
-// components/TransactionsChart.js
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { LineChart } from 'react-native-chart-kit';

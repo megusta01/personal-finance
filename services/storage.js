@@ -4,7 +4,7 @@ export async function salvarTransacao(descricao, valor, tipo) {
   const db = await openDatabase();
 
   const agora = new Date();
-  const dataFormatada = `${agora.toLocaleDateString()} ${agora.toLocaleTimeString()}`; // Ex: "12/03/2025 14:30"
+  const dataFormatada = `${agora.toLocaleDateString()} ${agora.toLocaleTimeString()}`;
 
   await db.runAsync(
     'INSERT INTO transacoes (descricao, valor, tipo, data) VALUES (?, ?, ?, ?)',

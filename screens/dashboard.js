@@ -1,4 +1,3 @@
-// Dashboard.js
 import React, { useState, useMemo, useCallback } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, Dimensions, ScrollView } from 'react-native';
 import { carregarTransacoes } from '../services/storage';

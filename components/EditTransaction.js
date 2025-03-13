@@ -1,4 +1,3 @@
-// components/EditTransactionModal.js
 import React from 'react';
 import { View, Modal, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 

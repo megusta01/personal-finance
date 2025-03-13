@@ -1,4 +1,3 @@
-// components/CurrencyCarousel.js
 import React from 'react';
 import { FlatList, StyleSheet } from 'react-native';
 import CurrencyCard from './CurrencyCard';
