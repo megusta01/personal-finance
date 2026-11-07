@@ -52,10 +52,10 @@ export default function TabsLayout() {
         listeners={{ tabPress: (e) => e.preventDefault() }}
       />
       <Tabs.Screen
-        name="cambio"
+        name="contas"
         options={{
-          title: 'Câmbio',
-          tabBarIcon: icon('swap-horizontal-outline', 'swap-horizontal'),
+          title: 'Contas',
+          tabBarIcon: icon('wallet-outline', 'wallet'),
         }}
       />
       <Tabs.Screen

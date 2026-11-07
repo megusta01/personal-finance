@@ -11,6 +11,9 @@ type Props = {
   color?: string;
   autoFocus?: boolean;
   error?: string;
+  /** Texto antes do valor (padrão "R$"). */
+  prefix?: string;
+  accessibilityLabel?: string;
 };
 
 /**
@@ -20,7 +23,15 @@ type Props = {
  * O TextInput fica invisível por cima do texto formatado: assim o valor
  * sempre aparece centralizado e com a fonte grande, em qualquer plataforma.
  */
-export function MoneyInput({ value, onChange, color, autoFocus, error }: Props) {
+export function MoneyInput({
+  value,
+  onChange,
+  color,
+  autoFocus,
+  error,
+  prefix = 'R$',
+  accessibilityLabel = 'Valor',
+}: Props) {
   const { colors } = useTheme();
   const ref = useRef<TextInputInstance>(null);
   const [focused, setFocused] = useState(false);
@@ -31,7 +42,7 @@ export function MoneyInput({ value, onChange, color, autoFocus, error }: Props) 
     <View style={styles.wrap}>
       <Pressable onPress={() => ref.current?.focus()} accessible={false} style={styles.row}>
         <Text variant="title" style={{ color: tint, opacity: 0.7, marginTop: 6 }}>
-          R$
+          {prefix}
         </Text>
         <Text style={[styles.amount, { color: value === 0 ? colors.textSubtle : tint }]} tabular>
           {display}
@@ -49,8 +60,8 @@ export function MoneyInput({ value, onChange, color, autoFocus, error }: Props) 
           caretHidden
           contextMenuHidden
           selection={{ start: display.length, end: display.length }}
-          accessibilityLabel="Valor"
-          accessibilityValue={{ text: `R$ ${display}` }}
+          accessibilityLabel={accessibilityLabel}
+          accessibilityValue={{ text: `${prefix} ${display}` }}
           style={styles.hiddenInput}
         />
       </Pressable>

@@ -1,11 +1,13 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, type Href } from 'expo-router';
-import { Pressable, StyleSheet, View } from 'react-native';
-import { Divider, EmptyState, Screen, SectionHeader, Surface, Text } from '@/components/ui';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Divider, EmptyState, Money, Screen, SectionHeader, Surface, Text } from '@/components/ui';
 import { useDbQuery } from '@/db/client';
 import { BalanceCard } from '@/features/home/BalanceCard';
 import { MonthlyChart } from '@/features/home/MonthlyChart';
 import { TransactionItem } from '@/features/transactions/TransactionItem';
+import { AccountIcon } from '@/features/accounts/AccountIcon';
+import { listAccountsWithBalance } from '@/features/accounts/repository';
 import {
   listRecent,
   monthlySeries,
@@ -17,7 +19,18 @@ import { formatDayHeading, greeting, monthKey, todayISO } from '@/lib/dates';
 import { useTheme } from '@/theme/ThemeProvider';
 import { radius, space } from '@/theme/tokens';
 
+function SeeAll({ label, href }: { label: string; href: Href }) {
+  return (
+    <Pressable onPress={() => router.push(href)} accessibilityRole="link" hitSlop={8}>
+      <Text variant="bodyStrong" tone="brand">
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
 export default function Home() {
+  const { colors } = useTheme();
   const month = monthKey(new Date());
   const { data } = useDbQuery(
     (db) => ({
@@ -25,6 +38,7 @@ export default function Home() {
       totals: monthTotals(db, month),
       series: monthlySeries(db, month, 6),
       recent: listRecent(db, 5),
+      accounts: listAccountsWithBalance(db),
     }),
     TX_TABLES,
     [month],
@@ -50,6 +64,49 @@ export default function Home() {
 
       <QuickActions />
 
+      {(data?.accounts.length ?? 0) > 1 && (
+        <>
+          <SectionHeader
+            title="Suas contas"
+            action={<SeeAll label="Ver contas" href="/contas" />}
+          />
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ gap: space.md }}
+            style={{ marginHorizontal: -space.lg }}
+          >
+            <View style={{ width: space.lg - space.md }} />
+            {data!.accounts.map((a) => (
+              <Pressable
+                key={a.id}
+                onPress={() => router.push(`/conta/${a.id}`)}
+                accessibilityRole="button"
+                accessibilityLabel={`Conta ${a.name}`}
+                style={({ pressed }) => [
+                  styles.accountCard,
+                  { backgroundColor: colors.surface, borderColor: colors.border },
+                  pressed && { opacity: 0.8 },
+                ]}
+              >
+                <AccountIcon icon={a.icon} color={a.color} size={32} />
+                <Text variant="caption" tone="muted" numberOfLines={1}>
+                  {a.name}
+                </Text>
+                <Money
+                  cents={a.balanceCents}
+                  variant="bodyStrong"
+                  tone={a.balanceCents < 0 ? 'expense' : 'default'}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                />
+              </Pressable>
+            ))}
+            <View style={{ width: space.lg - space.md }} />
+          </ScrollView>
+        </>
+      )}
+
       <SectionHeader title="Últimos 6 meses" />
       <Surface style={{ padding: space.lg }}>
         <MonthlyChart data={data?.series ?? []} current={month} />
@@ -57,15 +114,7 @@ export default function Home() {
 
       <SectionHeader
         title="Movimentações recentes"
-        action={
-          data?.recent.length ? (
-            <Pressable onPress={() => router.push('/extrato')} accessibilityRole="link" hitSlop={8}>
-              <Text variant="bodyStrong" tone="brand">
-                Ver extrato
-              </Text>
-            </Pressable>
-          ) : undefined
-        }
+        action={data?.recent.length ? <SeeAll label="Ver extrato" href="/extrato" /> : undefined}
       />
       <Surface>
         {data?.recent.length ? (
@@ -74,6 +123,7 @@ export default function Home() {
               {i > 0 && <Divider inset={68} />}
               <TransactionItem
                 item={t}
+                accountId={null}
                 showDate
                 onPress={(id) => router.push(`/transacao/${id}`)}
               />
@@ -111,8 +161,13 @@ const ACTIONS: {
     href: { pathname: '/transacao/nova', params: { tipo: 'income' } },
     tone: 'income',
   },
-  { label: 'Extrato', icon: 'receipt-outline', href: '/extrato', tone: 'brand' },
-  { label: 'Câmbio', icon: 'swap-horizontal', href: '/cambio', tone: 'brand' },
+  {
+    label: 'Transferir',
+    icon: 'swap-horizontal',
+    href: { pathname: '/transacao/nova', params: { tipo: 'transfer' } },
+    tone: 'brand',
+  },
+  { label: 'Câmbio', icon: 'globe-outline', href: '/cambio', tone: 'brand' },
 ];
 
 function QuickActions() {
@@ -140,6 +195,13 @@ function QuickActions() {
 }
 
 const styles = StyleSheet.create({
+  accountCard: {
+    width: 148,
+    padding: space.md + 2,
+    gap: space.xs + 2,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
   actions: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: space.xs },
   action: { alignItems: 'center', gap: space.sm, width: 72 },
   actionIcon: {

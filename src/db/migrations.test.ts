@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { migrationDb as adapter, openTestDb } from '@/test/sqlite';
-import { LATEST_VERSION, migrate } from './migrations';
-import { DEFAULT_CATEGORIES } from './seed';
+import { LATEST_VERSION, migrate, MIGRATIONS } from './migrations';
+import { DEFAULT_CATEGORIES, DEFAULT_SUBCATEGORIES, SYSTEM_CATEGORIES } from './seed';
 
 /** Cria um banco igual ao da versão 1 do app (services/database.js). */
 function legacyDb() {
@@ -28,7 +28,9 @@ describe('migrate', () => {
     expect(await migrate(db)).toEqual({ from: LATEST_VERSION, to: LATEST_VERSION });
 
     const cats = raw.prepare('SELECT count(*) n FROM categories').get() as { n: number };
-    expect(cats.n).toBe(DEFAULT_CATEGORIES.length);
+    expect(cats.n).toBe(
+      DEFAULT_CATEGORIES.length + SYSTEM_CATEGORIES.length + DEFAULT_SUBCATEGORIES.length,
+    );
     const accs = raw.prepare('SELECT count(*) n FROM accounts').get() as { n: number };
     expect(accs.n).toBe(1);
   });
@@ -98,5 +100,30 @@ describe('migrate', () => {
     expect(() => insert(-100, '2026-11-07')).toThrow();
     expect(() => insert(100, '07/11/2026')).toThrow();
     expect(() => insert(100, '2026-11-07')).not.toThrow();
+  });
+
+  it('atualiza um banco da versão 1 (com dados) para a atual sem perder nada', async () => {
+    const raw = openTestDb();
+    const db = adapter(raw);
+    // Estado do celular depois da Fase 1: só a migration 1 aplicada.
+    await MIGRATIONS[0]!.up(db);
+    raw.exec('PRAGMA user_version = 1');
+    raw.exec(`INSERT INTO categories (id, name, kind, icon, color, created_at, updated_at)
+              VALUES ('minha-cat', 'Minha categoria', 'expense', 'cart-outline', '#123456', 'x', 'x')`);
+    raw.exec(`INSERT INTO transactions (id, kind, amount_cents, description, account_id, category_id, occurred_on, created_at, updated_at)
+              VALUES ('t1', 'expense', 1000, 'Teste', 'acc-default-wallet', 'minha-cat', '2026-11-07', 'x', 'x')`);
+
+    expect(await migrate(db)).toEqual({ from: 1, to: LATEST_VERSION });
+
+    const t = raw
+      .prepare("SELECT amount_cents, category_id FROM transactions WHERE id = 't1'")
+      .get();
+    expect(t).toMatchObject({ amount_cents: 1000, category_id: 'minha-cat' });
+    const mine = raw.prepare("SELECT is_system FROM categories WHERE id = 'minha-cat'").get();
+    expect(mine).toMatchObject({ is_system: 0 });
+    const sub = raw
+      .prepare("SELECT parent_id, color FROM categories WHERE id = 'sub-food-delivery'")
+      .get();
+    expect(sub).toMatchObject({ parent_id: 'cat-exp-food', color: '#E07A3F' });
   });
 });

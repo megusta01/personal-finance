@@ -1,9 +1,10 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import Constants from 'expo-constants';
+import { router } from 'expo-router';
 import { StyleSheet, Switch, View } from 'react-native';
-import { Divider, Screen, SectionHeader, Segmented, Surface, Text } from '@/components/ui';
+import { Divider, ListRow, Screen, SectionHeader, Segmented, Surface, Text } from '@/components/ui';
 import { useDbQuery } from '@/db/client';
-import { getMeta } from '@/features/catalog/repository';
+import { getMeta } from '@/features/catalog/meta';
 import { countTransactions } from '@/features/transactions/repository';
 import { formatDateShort } from '@/lib/dates';
 import { setHideValues, setThemePref, usePrefs, type ThemePref } from '@/lib/prefs';
@@ -24,6 +25,30 @@ export default function Mais() {
 
   return (
     <Screen title="Mais">
+      <SectionHeader title="Organizar" />
+      <Surface>
+        <ListRow
+          title="Categorias"
+          subtitle="Criar, editar e arquivar categorias e subcategorias"
+          left={<Ionicons name="pricetags-outline" size={22} color={colors.brand} />}
+          onPress={() => router.push('/categorias')}
+        />
+        <Divider inset={56} />
+        <ListRow
+          title="Contas"
+          subtitle="Contas, saldos e transferências"
+          left={<Ionicons name="wallet-outline" size={22} color={colors.brand} />}
+          onPress={() => router.push('/contas')}
+        />
+        <Divider inset={56} />
+        <ListRow
+          title="Câmbio"
+          subtitle="Cotações e conversor de moedas"
+          left={<Ionicons name="globe-outline" size={22} color={colors.brand} />}
+          onPress={() => router.push('/cambio')}
+        />
+      </Surface>
+
       <SectionHeader title="Aparência" />
       <Surface style={{ padding: space.lg, gap: space.lg }}>
         <Segmented<ThemePref>

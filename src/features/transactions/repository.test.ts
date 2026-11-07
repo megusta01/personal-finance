@@ -25,7 +25,9 @@ beforeEach(async () => {
   db = testDrizzle(raw);
 });
 
-const base = (over: Partial<TransactionInput>): TransactionInput => ({
+type CatInput = Extract<TransactionInput, { kind: 'income' | 'expense' }>;
+
+const base = (over: Partial<CatInput>): CatInput => ({
   kind: 'expense',
   amountCents: 1000,
   description: 'Teste',

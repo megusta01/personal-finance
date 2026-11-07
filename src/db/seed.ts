@@ -147,3 +147,51 @@ export const FALLBACK_CATEGORY: Record<CategoryKind, string> = {
   expense: 'cat-exp-other',
   income: 'cat-inc-other',
 };
+
+/** Categorias internas, usadas pelo "Ajustar saldo" da conta. */
+export const ADJUSTMENT_CATEGORY: Record<CategoryKind, string> = {
+  income: 'cat-sys-adjust-inc',
+  expense: 'cat-sys-adjust-exp',
+};
+
+export const SYSTEM_CATEGORIES: SeedCategory[] = [
+  {
+    id: ADJUSTMENT_CATEGORY.income,
+    name: 'Ajuste de saldo',
+    kind: 'income',
+    icon: 'options-outline',
+    color: '#6F7B80',
+  },
+  {
+    id: ADJUSTMENT_CATEGORY.expense,
+    name: 'Ajuste de saldo',
+    kind: 'expense',
+    icon: 'options-outline',
+    color: '#6F7B80',
+  },
+];
+
+/** Subcategorias padrão. Herdam ícone e cor da categoria pai. */
+export const DEFAULT_SUBCATEGORIES: { id: string; parentId: string; name: string }[] = [
+  { id: 'sub-food-restaurant', parentId: 'cat-exp-food', name: 'Restaurante' },
+  { id: 'sub-food-delivery', parentId: 'cat-exp-food', name: 'Delivery' },
+  { id: 'sub-food-bakery', parentId: 'cat-exp-food', name: 'Padaria e café' },
+  { id: 'sub-transport-fuel', parentId: 'cat-exp-transport', name: 'Combustível' },
+  { id: 'sub-transport-ride', parentId: 'cat-exp-transport', name: 'App de transporte' },
+  { id: 'sub-transport-public', parentId: 'cat-exp-transport', name: 'Ônibus e metrô' },
+  { id: 'sub-transport-parking', parentId: 'cat-exp-transport', name: 'Estacionamento e pedágio' },
+  { id: 'sub-home-rent', parentId: 'cat-exp-home', name: 'Aluguel' },
+  { id: 'sub-home-condo', parentId: 'cat-exp-home', name: 'Condomínio' },
+  { id: 'sub-home-repair', parentId: 'cat-exp-home', name: 'Manutenção' },
+  { id: 'sub-util-power', parentId: 'cat-exp-utilities', name: 'Luz' },
+  { id: 'sub-util-water', parentId: 'cat-exp-utilities', name: 'Água' },
+  { id: 'sub-util-internet', parentId: 'cat-exp-utilities', name: 'Internet' },
+  { id: 'sub-util-gas', parentId: 'cat-exp-utilities', name: 'Gás' },
+  { id: 'sub-util-phone', parentId: 'cat-exp-utilities', name: 'Celular' },
+  { id: 'sub-health-pharmacy', parentId: 'cat-exp-health', name: 'Farmácia' },
+  { id: 'sub-health-plan', parentId: 'cat-exp-health', name: 'Plano de saúde' },
+  { id: 'sub-health-visits', parentId: 'cat-exp-health', name: 'Consultas e exames' },
+  { id: 'sub-taxes-ipva', parentId: 'cat-exp-taxes', name: 'IPVA' },
+  { id: 'sub-taxes-iptu', parentId: 'cat-exp-taxes', name: 'IPTU' },
+  { id: 'sub-taxes-bank', parentId: 'cat-exp-taxes', name: 'Tarifas bancárias' },
+];

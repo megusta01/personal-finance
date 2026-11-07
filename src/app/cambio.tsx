@@ -5,7 +5,8 @@ import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { Button, Divider, MoneyInput, Screen, SectionHeader, Surface, Text } from '@/components/ui';
 import { useDbQuery } from '@/db/client';
 import { useRates, type Rate } from '@/features/rates/useRates';
-import { totalBalance, TX_TABLES } from '@/features/transactions/repository';
+import { totalBalance } from '@/features/accounts/repository';
+import { TX_TABLES } from '@/features/transactions/repository';
 import { formatBRL } from '@/lib/money';
 import { useTheme } from '@/theme/ThemeProvider';
 import { radius, space } from '@/theme/tokens';
@@ -26,6 +27,7 @@ export default function Cambio() {
 
   return (
     <Screen
+      back
       title="Câmbio"
       refreshing={rates.status === 'loading' && !!rates.rates}
       onRefresh={rates.reload}

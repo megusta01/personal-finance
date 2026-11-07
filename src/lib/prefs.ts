@@ -61,3 +61,20 @@ export function usePrefs(): Prefs {
     () => current,
   );
 }
+
+/** Última conta usada num lançamento: vira o padrão do próximo. */
+const LAST_ACCOUNT_KEY = 'pref.lastAccountId';
+
+export function getLastAccountId(): string | null {
+  try {
+    return kv.get(LAST_ACCOUNT_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setLastAccountId(id: string) {
+  try {
+    kv.set(LAST_ACCOUNT_KEY, id);
+  } catch {}
+}

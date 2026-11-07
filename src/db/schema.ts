@@ -47,6 +47,8 @@ export const categories = sqliteTable('categories', {
   parentId: text('parent_id'),
   sortOrder: integer('sort_order').notNull().default(0),
   archivedAt: text('archived_at'),
+  /** Categorias internas (ex.: "Ajuste de saldo"): não aparecem para escolha nem edição. */
+  isSystem: integer('is_system', { mode: 'boolean' }).notNull().default(false),
   ...syncColumns,
 });
 

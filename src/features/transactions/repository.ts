@@ -1,24 +1,33 @@
-import { and, desc, eq, gte, inArray, isNull, like, lte, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, like, lte, or, sql, type SQL } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/sqlite-core';
 import { randomUUID } from 'expo-crypto';
 import type { AppDb } from '@/db/client';
 import { accounts, categories, transactions, type TransactionKind } from '@/db/schema';
+import { ADJUSTMENT_CATEGORY } from '@/db/seed';
+import { categoryFamilyIds } from '@/features/categories/repository';
 import { monthRange, nowTimestamp, shiftMonth, type ISODate, type MonthKey } from '@/lib/dates';
+
+export { totalBalance } from '@/features/accounts/repository';
 
 export const TX_TABLES = ['transactions', 'categories', 'accounts'];
 
-export type TransactionInput = {
-  kind: Exclude<TransactionKind, 'transfer'>;
+type Common = {
   amountCents: number;
   description: string;
-  categoryId: string;
   accountId: string;
   occurredOn: ISODate;
   notes?: string | null;
 };
 
-const alive = isNull(transactions.deletedAt);
+export type TransactionInput =
+  | (Common & { kind: 'income' | 'expense'; categoryId: string })
+  | (Common & { kind: 'transfer'; toAccountId: string });
 
-/** Linha pronta para a lista: transação + categoria + conta. */
+const alive = isNull(transactions.deletedAt);
+const toAccount = alias(accounts, 'to_account');
+const parentCategory = alias(categories, 'parent_category');
+
+/** Linha pronta para a lista: transação + categoria (e categoria pai) + contas. */
 function listSelect(db: AppDb) {
   return db
     .select({
@@ -34,36 +43,59 @@ function listSelect(db: AppDb) {
       categoryName: categories.name,
       categoryIcon: categories.icon,
       categoryColor: categories.color,
+      parentCategoryName: parentCategory.name,
       accountId: transactions.accountId,
       accountName: accounts.name,
+      toAccountId: transactions.toAccountId,
+      toAccountName: toAccount.name,
     })
     .from(transactions)
     .leftJoin(categories, eq(categories.id, transactions.categoryId))
-    .leftJoin(accounts, eq(accounts.id, transactions.accountId));
+    .leftJoin(parentCategory, eq(parentCategory.id, categories.parentId))
+    .leftJoin(accounts, eq(accounts.id, transactions.accountId))
+    .leftJoin(toAccount, eq(toAccount.id, transactions.toAccountId));
 }
 
 export type TransactionRow = ReturnType<ReturnType<typeof listSelect>['all']>[number];
 
+export type KindFilter = 'all' | TransactionKind;
+
 export type MonthFilter = {
   month: MonthKey;
-  kind?: 'income' | 'expense' | 'all';
+  kind?: KindFilter;
   search?: string;
+  /** Movimentações que saem OU entram nessa conta. */
+  accountId?: string | null;
+  /** A categoria e todas as subcategorias dela. */
+  categoryId?: string | null;
 };
 
-export function listByMonth(
-  db: AppDb,
-  { month, kind = 'all', search }: MonthFilter,
-): TransactionRow[] {
+function filterWhere(db: AppDb, f: Omit<MonthFilter, 'month'>): SQL[] {
+  const term = f.search?.trim().replace(/[%_]/g, '');
+  const out: (SQL | undefined)[] = [
+    f.kind && f.kind !== 'all' ? eq(transactions.kind, f.kind) : undefined,
+    term
+      ? or(like(transactions.description, `%${term}%`), like(transactions.notes, `%${term}%`))
+      : undefined,
+    f.accountId
+      ? or(eq(transactions.accountId, f.accountId), eq(transactions.toAccountId, f.accountId))
+      : undefined,
+    f.categoryId
+      ? inArray(transactions.categoryId, categoryFamilyIds(db, f.categoryId))
+      : undefined,
+  ];
+  return out.filter((x): x is SQL => !!x);
+}
+
+export function listByMonth(db: AppDb, { month, ...filters }: MonthFilter): TransactionRow[] {
   const [from, to] = monthRange(month);
-  const term = search?.trim();
   return listSelect(db)
     .where(
       and(
         alive,
         gte(transactions.occurredOn, from),
         lte(transactions.occurredOn, to),
-        kind === 'all' ? undefined : eq(transactions.kind, kind),
-        term ? like(transactions.description, `%${term.replace(/[%_]/g, '')}%`) : undefined,
+        ...filterWhere(db, filters),
       ),
     )
     .orderBy(desc(transactions.occurredOn), desc(transactions.createdAt))
@@ -88,20 +120,52 @@ export function getTransaction(db: AppDb, id: string) {
 
 export type Totals = { incomeCents: number; expenseCents: number };
 
-const incomeSum = sql<number>`coalesce(sum(case when ${transactions.kind} = 'income' then ${transactions.amountCents} else 0 end), 0)`;
-const expenseSum = sql<number>`coalesce(sum(case when ${transactions.kind} = 'expense' then ${transactions.amountCents} else 0 end), 0)`;
+/**
+ * "Ajuste de saldo" corrige o saldo da conta, mas não é ganho nem gasto de verdade:
+ * fica fora dos totais de entradas/saídas e do gráfico (continua no saldo e no extrato).
+ */
+const notAdjustment = sql`coalesce(${transactions.categoryId}, '') not in (${ADJUSTMENT_CATEGORY.income}, ${ADJUSTMENT_CATEGORY.expense})`;
 
-export function monthTotals(db: AppDb, month: MonthKey): Totals {
+const sumWhen = (cond: SQL) =>
+  sql<number>`coalesce(sum(case when ${cond} then ${transactions.amountCents} else 0 end), 0)`;
+const incomeSum = sumWhen(sql`${transactions.kind} = 'income'`);
+const expenseSum = sumWhen(sql`${transactions.kind} = 'expense'`);
+
+/**
+ * Entradas e saídas do mês (pagas).
+ * Sem conta: só receitas e despesas (transferência entre contas e ajuste de saldo não são ganho nem gasto).
+ * Com conta: transferências recebidas contam como entrada e as enviadas como saída.
+ */
+export function monthTotals(db: AppDb, month: MonthKey, accountId?: string | null): Totals {
   const [from, to] = monthRange(month);
+  const range = [
+    alive,
+    eq(transactions.status, 'paid'),
+    gte(transactions.occurredOn, from),
+    lte(transactions.occurredOn, to),
+  ];
+  if (!accountId) {
+    const row = db
+      .select({ incomeCents: incomeSum, expenseCents: expenseSum })
+      .from(transactions)
+      .where(and(...range, notAdjustment))
+      .get();
+    return { incomeCents: row?.incomeCents ?? 0, expenseCents: row?.expenseCents ?? 0 };
+  }
   const row = db
-    .select({ incomeCents: incomeSum, expenseCents: expenseSum })
+    .select({
+      incomeCents: sumWhen(
+        sql`(${transactions.kind} = 'income' and ${transactions.accountId} = ${accountId}) or (${transactions.kind} = 'transfer' and ${transactions.toAccountId} = ${accountId})`,
+      ),
+      expenseCents: sumWhen(
+        sql`(${transactions.kind} in ('expense', 'transfer') and ${transactions.accountId} = ${accountId})`,
+      ),
+    })
     .from(transactions)
     .where(
       and(
-        alive,
-        eq(transactions.status, 'paid'),
-        gte(transactions.occurredOn, from),
-        lte(transactions.occurredOn, to),
+        ...range,
+        or(eq(transactions.accountId, accountId), eq(transactions.toAccountId, accountId)),
       ),
     )
     .get();
@@ -127,6 +191,7 @@ export function monthlySeries(
         eq(transactions.status, 'paid'),
         gte(transactions.occurredOn, from),
         lte(transactions.occurredOn, to),
+        notAdjustment,
       ),
     )
     .groupBy(month)
@@ -137,27 +202,6 @@ export function monthlySeries(
     const r = byMonth.get(key);
     return { month: key, incomeCents: r?.incomeCents ?? 0, expenseCents: r?.expenseCents ?? 0 };
   });
-}
-
-/**
- * Saldo atual: saldo inicial das contas que entram no total + receitas − despesas já pagas.
- * Transferências entre contas não mudam o total (entram na Fase 2, com saldo por conta).
- */
-export function totalBalance(db: AppDb): number {
-  const included = db
-    .select({ id: accounts.id, initial: accounts.initialBalanceCents })
-    .from(accounts)
-    .where(and(isNull(accounts.deletedAt), eq(accounts.includeInTotal, true)))
-    .all();
-  if (included.length === 0) return 0;
-  const ids = included.map((a) => a.id);
-  const initial = included.reduce((s, a) => s + a.initial, 0);
-  const row = db
-    .select({ incomeCents: incomeSum, expenseCents: expenseSum })
-    .from(transactions)
-    .where(and(alive, eq(transactions.status, 'paid'), inArray(transactions.accountId, ids)))
-    .get();
-  return initial + (row?.incomeCents ?? 0) - (row?.expenseCents ?? 0);
 }
 
 export function countTransactions(db: AppDb): number {
@@ -173,15 +217,21 @@ function clean(input: TransactionInput) {
   if (!Number.isInteger(input.amountCents) || input.amountCents <= 0) {
     throw new Error('O valor precisa ser maior que zero.');
   }
-  return {
+  const base = {
     kind: input.kind,
     amountCents: input.amountCents,
     description: input.description.trim(),
-    categoryId: input.categoryId,
     accountId: input.accountId,
     occurredOn: input.occurredOn,
     notes: input.notes?.trim() || null,
   };
+  if (input.kind === 'transfer') {
+    if (!input.toAccountId || input.toAccountId === input.accountId) {
+      throw new Error('Escolha contas diferentes para a origem e o destino.');
+    }
+    return { ...base, toAccountId: input.toAccountId, categoryId: null };
+  }
+  return { ...base, toAccountId: null, categoryId: input.categoryId };
 }
 
 export function createTransaction(db: AppDb, input: TransactionInput): string {
@@ -215,4 +265,15 @@ export function restoreTransaction(db: AppDb, id: string) {
     .set({ deletedAt: null, updatedAt: nowTimestamp() })
     .where(eq(transactions.id, id))
     .run();
+}
+
+/** Valor da linha do ponto de vista de uma conta (ou do total, sem conta). */
+export function signedAmount(
+  row: Pick<TransactionRow, 'kind' | 'amountCents' | 'accountId' | 'toAccountId'>,
+  accountId?: string | null,
+): number {
+  if (row.kind === 'income') return row.amountCents;
+  if (row.kind === 'expense') return -row.amountCents;
+  if (!accountId) return 0; // transferência não muda o total
+  return row.toAccountId === accountId ? row.amountCents : -row.amountCents;
 }

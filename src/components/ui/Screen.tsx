@@ -1,8 +1,10 @@
 import type { ReactNode } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, View, type ScrollViewProps } from 'react-native';
+import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/theme/ThemeProvider';
 import { space } from '@/theme/tokens';
+import { IconButton } from './IconButton';
 import { Text } from './Text';
 
 /** Largura máxima do conteúdo em tablets e no navegador. */
@@ -11,6 +13,8 @@ export const CONTENT_MAX_WIDTH = 640;
 type Props = ScrollViewProps & {
   title?: string;
   right?: ReactNode;
+  /** Mostra o botão de voltar (telas empilhadas, fora das abas). */
+  back?: boolean;
   children: ReactNode;
   refreshing?: boolean;
   onRefresh?: () => void;
@@ -19,6 +23,7 @@ type Props = ScrollViewProps & {
 export function Screen({
   title,
   right,
+  back,
   children,
   refreshing,
   onRefresh,
@@ -47,22 +52,43 @@ export function Screen({
       }
       {...rest}
     >
-      {(title || right) && <ScreenHeader title={title} right={right} />}
+      {(title || right || back) && <ScreenHeader title={title} right={right} back={back} />}
       {children}
     </ScrollView>
   );
 }
 
-export function ScreenHeader({ title, right }: { title?: string; right?: ReactNode }) {
+export function ScreenHeader({
+  title,
+  right,
+  back,
+}: {
+  title?: string;
+  right?: ReactNode;
+  back?: boolean;
+}) {
   return (
     <View style={styles.header}>
-      {title ? (
-        <Text variant="title" accessibilityRole="header">
-          {title}
-        </Text>
-      ) : (
-        <View />
-      )}
+      <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: space.xs }}>
+        {back && (
+          <IconButton
+            icon="chevron-back"
+            label="Voltar"
+            style={{ marginLeft: -space.md }}
+            onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}
+          />
+        )}
+        {title ? (
+          <Text
+            variant="title"
+            accessibilityRole="header"
+            numberOfLines={1}
+            style={{ flexShrink: 1 }}
+          >
+            {title}
+          </Text>
+        ) : null}
+      </View>
       {right}
     </View>
   );

@@ -1,4 +1,5 @@
 import { router, useLocalSearchParams } from 'expo-router';
+import { useState } from 'react';
 import { View } from 'react-native';
 import { EmptyState } from '@/components/ui';
 import { useDb } from '@/db/client';
@@ -11,9 +12,9 @@ export default function EditarTransacao() {
   const db = useDb();
   const { colors } = useTheme();
   // Lido uma vez ao abrir: o formulário guarda a edição em andamento.
-  const tx = id ? getTransaction(db, id) : undefined;
+  const [tx] = useState(() => (id ? getTransaction(db, id) : undefined));
 
-  if (!tx || tx.kind === 'transfer') {
+  if (!tx) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', backgroundColor: colors.bg }}>
         <EmptyState
@@ -27,18 +28,5 @@ export default function EditarTransacao() {
     );
   }
 
-  return (
-    <TransactionForm
-      editingId={tx.id}
-      initial={{
-        kind: tx.kind,
-        amountCents: tx.amountCents,
-        description: tx.description,
-        categoryId: tx.categoryId ?? undefined,
-        accountId: tx.accountId,
-        occurredOn: tx.occurredOn,
-        notes: tx.notes ?? '',
-      }}
-    />
-  );
+  return <TransactionForm editingId={tx.id} initial={tx} />;
 }

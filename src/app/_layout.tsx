@@ -93,6 +93,14 @@ function Navigation() {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="transacao/nova" options={{ presentation: 'modal' }} />
         <Stack.Screen name="transacao/[id]" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="conta/[id]" />
+        <Stack.Screen name="conta/nova" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="conta/editar/[id]" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="conta/ajustar/[id]" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="categorias/index" />
+        <Stack.Screen name="categorias/nova" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="categorias/[id]" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="cambio" />
       </Stack>
     </ThemeProvider>
   );

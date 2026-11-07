@@ -1,5 +1,11 @@
 import { nowTimestamp, parseLegacyDate, todayISO } from '@/lib/dates';
-import { DEFAULT_ACCOUNT, DEFAULT_CATEGORIES, FALLBACK_CATEGORY } from './seed';
+import {
+  DEFAULT_ACCOUNT,
+  DEFAULT_CATEGORIES,
+  DEFAULT_SUBCATEGORIES,
+  FALLBACK_CATEGORY,
+  SYSTEM_CATEGORIES,
+} from './seed';
 
 /**
  * Migrations versionadas com PRAGMA user_version.
@@ -187,6 +193,37 @@ export const MIGRATIONS: Migration[] = [
       }
 
       await importLegacyTransactions(db);
+    },
+  },
+  {
+    version: 2,
+    name: 'categorias de sistema, subcategorias padrão e índices para transferências',
+    up: async (db) => {
+      await db.execAsync(`
+        ALTER TABLE categories ADD COLUMN is_system INTEGER NOT NULL DEFAULT 0;
+        CREATE INDEX idx_transactions_to_account ON transactions (to_account_id);
+        CREATE INDEX idx_categories_parent       ON categories (parent_id);
+      `);
+
+      const now = nowTimestamp();
+      for (const c of SYSTEM_CATEGORIES) {
+        await db.runAsync(
+          `INSERT OR IGNORE INTO categories (id, name, kind, icon, color, sort_order, is_system, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, 999, 1, ?, ?)`,
+          [c.id, c.name, c.kind, c.icon, c.color, now, now],
+        );
+      }
+
+      // Subcategorias herdam tipo, ícone e cor da categoria pai (se ela ainda existir).
+      for (const [i, sub] of DEFAULT_SUBCATEGORIES.entries()) {
+        await db.runAsync(
+          `INSERT OR IGNORE INTO categories (id, name, kind, icon, color, parent_id, sort_order, created_at, updated_at)
+           SELECT ?, ?, kind, icon, color, id, ?, ?, ?
+             FROM categories
+            WHERE id = ? AND deleted_at IS NULL`,
+          [sub.id, sub.name, i, now, now, sub.parentId],
+        );
+      }
     },
   },
 ];
