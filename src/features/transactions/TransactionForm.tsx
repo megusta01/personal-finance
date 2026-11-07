@@ -353,7 +353,7 @@ export function TransactionForm({ editingId, initial }: Props) {
         <Button
           size="lg"
           label={editingId ? 'Salvar alterações' : `Salvar ${noun}`}
-          onPress={onSubmit}
+          onPress={() => onSubmit()}
           loading={isSubmitting}
           style={styles.save}
         />

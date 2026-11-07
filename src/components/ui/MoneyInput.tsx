@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, TextInput, View, type TextInputInstance } from 'react-native';
 import { centsFromDigits, formatAmount } from '@/lib/money';
 import { useTheme } from '@/theme/ThemeProvider';
 import { font, space } from '@/theme/tokens';
@@ -22,7 +22,7 @@ type Props = {
  */
 export function MoneyInput({ value, onChange, color, autoFocus, error }: Props) {
   const { colors } = useTheme();
-  const ref = useRef<TextInput>(null);
+  const ref = useRef<TextInputInstance>(null);
   const [focused, setFocused] = useState(false);
   const display = formatAmount(value);
   const tint = color ?? colors.text;

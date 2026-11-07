@@ -9,7 +9,7 @@ entra numa fase própria (veja o roteiro abaixo).
 Precisa do **Node 22.13 ou mais novo** (Node 24 ou 26 também servem).
 
 ```bash
-npm install          # também aplica o patch em patches/ (ver "Observações")
+npm install
 npm start            # abre o Expo; pressione a (Android), i (iOS) ou w (web)
 ```
 
@@ -23,7 +23,7 @@ Scripts úteis:
 
 ## Stack
 
-- **Expo SDK 57** (React Native 0.86, React 19.2), TypeScript strict
+- **Expo SDK 58** (React Native 0.88, React 19.3), TypeScript strict
 - **Expo Router**: rotas por arquivo em `src/app`
 - **expo-sqlite + Drizzle ORM**: consultas tipadas; migrations versionadas por `PRAGMA user_version`
 - **react-hook-form + Zod**: formulários e validação
@@ -67,14 +67,11 @@ src/
 
 ## Observações
 
-- `patches/expo-sqlite+*.patch` corrige um bug do expo-sqlite **na web**: as chamadas
-  síncronas cortavam qualquer resultado com mais de 255 bytes. Não afeta Android/iOS.
-  Vale remover quando o expo-sqlite publicar a correção.
 - Na web as preferências (tema, ocultar valores) usam `localStorage`; no celular, o kv-store do expo-sqlite.
 
 ## Roteiro
 
-- [x] **Fase 1, fundação**: SDK 57, TypeScript, Expo Router, banco com migrations, design system,
+- [x] **Fase 1, fundação**: SDK 58, TypeScript, Expo Router, banco com migrations, design system,
       telas atuais refeitas, bugs da v1 corrigidos, importação dos dados antigos
 - [ ] **Fase 2**: contas (corrente, poupança, carteira…), saldo por conta, transferências,
       gerenciar categorias e subcategorias, filtros por conta e categoria
