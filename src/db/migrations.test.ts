@@ -1,33 +1,11 @@
-import Database from 'better-sqlite3';
 import { describe, expect, it } from 'vitest';
-import { LATEST_VERSION, migrate, type MigrationDb } from './migrations';
+import { migrationDb as adapter, openTestDb } from '@/test/sqlite';
+import { LATEST_VERSION, migrate } from './migrations';
 import { DEFAULT_CATEGORIES } from './seed';
-
-/** Adapta o better-sqlite3 (síncrono) para a interface assíncrona do expo-sqlite. */
-function adapter(raw: Database.Database): MigrationDb {
-  return {
-    execAsync: async (s) => void raw.exec(s),
-    runAsync: async (s, p) => raw.prepare(s).run(...p),
-    getAllAsync: async <T>(s: string, p: (string | number | null)[] = []) =>
-      raw.prepare(s).all(...p) as T[],
-    getFirstAsync: async <T>(s: string, p: (string | number | null)[] = []) =>
-      (raw.prepare(s).get(...p) as T | undefined) ?? null,
-    withTransactionAsync: async (task) => {
-      raw.exec('BEGIN');
-      try {
-        await task();
-        raw.exec('COMMIT');
-      } catch (e) {
-        raw.exec('ROLLBACK');
-        throw e;
-      }
-    },
-  };
-}
 
 /** Cria um banco igual ao da versão 1 do app (services/database.js). */
 function legacyDb() {
-  const raw = new Database(':memory:');
+  const raw = openTestDb();
   raw.exec(`CREATE TABLE transacoes (
     id INTEGER PRIMARY KEY AUTOINCREMENT, descricao TEXT NOT NULL, valor REAL NOT NULL,
     tipo TEXT NOT NULL, data TEXT NOT NULL)`);
@@ -44,7 +22,7 @@ function legacyDb() {
 
 describe('migrate', () => {
   it('cria a estrutura num banco novo e é idempotente', async () => {
-    const raw = new Database(':memory:');
+    const raw = openTestDb();
     const db = adapter(raw);
     expect(await migrate(db)).toEqual({ from: 0, to: LATEST_VERSION });
     expect(await migrate(db)).toEqual({ from: LATEST_VERSION, to: LATEST_VERSION });
@@ -107,7 +85,7 @@ describe('migrate', () => {
   });
 
   it('as restrições do banco barram dados inválidos', async () => {
-    const raw = new Database(':memory:');
+    const raw = openTestDb();
     await migrate(adapter(raw));
     const insert = (amount: number, date: string) =>
       raw

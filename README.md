@@ -6,6 +6,8 @@ entra numa fase própria (veja o roteiro abaixo).
 
 ## Como rodar
 
+Precisa do **Node 22.13 ou mais novo** (Node 24 ou 26 também servem).
+
 ```bash
 npm install          # também aplica o patch em patches/ (ver "Observações")
 npm start            # abre o Expo; pressione a (Android), i (iOS) ou w (web)
@@ -17,7 +19,7 @@ Scripts úteis:
 |---|---|
 | `npm run typecheck` | TypeScript em modo strict |
 | `npm run lint` | ESLint (config do Expo, com as regras do React Compiler) |
-| `npm test` | Testes da lógica: dinheiro, datas, migrations e consultas |
+| `npm test` | Testes da lógica: dinheiro, datas, migrations e consultas (usa o `node:sqlite` do próprio Node, nada para compilar) |
 
 ## Stack
 

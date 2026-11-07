@@ -1,9 +1,7 @@
-import Database from 'better-sqlite3';
-import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AppDb } from '@/db/client';
 import { migrate } from '@/db/migrations';
-import { schema } from '@/db/schema';
+import { migrationDb, openTestDb, testDrizzle } from '@/test/sqlite';
 import { DEFAULT_ACCOUNT } from '@/db/seed';
 import {
   createTransaction,
@@ -22,23 +20,9 @@ vi.mock('expo-crypto', () => ({ randomUUID: () => crypto.randomUUID() }));
 let db: AppDb;
 
 beforeEach(async () => {
-  const raw = new Database(':memory:');
-  // mesmo adaptador simples dos testes de migration
-  await migrate({
-    execAsync: async (s) => void raw.exec(s),
-    runAsync: async (s, p) => raw.prepare(s).run(...p),
-    getAllAsync: async <T>(s: string, p: (string | number | null)[] = []) =>
-      raw.prepare(s).all(...p) as T[],
-    getFirstAsync: async <T>(s: string, p: (string | number | null)[] = []) =>
-      (raw.prepare(s).get(...p) as T | undefined) ?? null,
-    withTransactionAsync: async (task) => {
-      raw.exec('BEGIN');
-      await task();
-      raw.exec('COMMIT');
-    },
-  });
-  // O driver do better-sqlite3 tem a mesma API síncrona do driver do expo-sqlite.
-  db = drizzle(raw, { schema }) as unknown as AppDb;
+  const raw = openTestDb();
+  await migrate(migrationDb(raw));
+  db = testDrizzle(raw);
 });
 
 const base = (over: Partial<TransactionInput>): TransactionInput => ({

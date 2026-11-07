@@ -10,7 +10,7 @@ import { DEFAULT_ACCOUNT, DEFAULT_CATEGORIES, FALLBACK_CATEGORY } from './seed';
  *    então ou ela é aplicada inteira ou nada muda.
  *
  * O tipo MigrationDb é o subconjunto do SQLiteDatabase do expo-sqlite que usamos,
- * o que permite testar as migrations no Node com better-sqlite3.
+ * o que permite testar as migrations no Node com node:sqlite (ver src/test/sqlite.ts).
  */
 
 type Bind = string | number | null;
