@@ -4,8 +4,8 @@ App pessoal para administrar a vida financeira: contas com saldo próprio, trans
 cartões de crédito (faturas, limite, compras parceladas), contas a pagar e a receber,
 recorrências com lembretes, categorias e subcategorias, extrato por mês com filtros, relatórios,
 orçamentos por categoria, metas, backup/planilha, bloqueio com biometria e câmbio.
-Os dados ficam no aparelho (SQLite) e funcionam sem internet. A sincronização com o Supabase
-entra numa fase própria (veja o roteiro abaixo).
+Os dados ficam no aparelho (SQLite) e funcionam sem internet. Com uma conta (opcional), tudo
+sincroniza com o Supabase e aparece em todos os aparelhos.
 
 ## Como rodar
 
@@ -22,6 +22,7 @@ Scripts úteis:
 |---|---|
 | `npm run typecheck` | TypeScript em modo strict |
 | `npm run lint` | ESLint (config do Expo, com as regras do React Compiler) |
+| `npm run supabase:sql` | Regera `supabase/schema.sql` depois de mudar as tabelas do app |
 | `npm test` | Testes da lógica: dinheiro, datas, migrations e consultas (usa o `node:sqlite` do próprio Node, nada para compilar) |
 
 ## Stack
@@ -31,6 +32,8 @@ Scripts úteis:
 - **expo-sqlite + Drizzle ORM**: consultas tipadas; migrations versionadas por `PRAGMA user_version`
 - **react-hook-form + Zod**: formulários e validação
 - **date-fns** com locale pt-BR
+- **Supabase** (supabase-js): login e sincronização; nos testes, um Postgres em memória (pglite)
+  roda o mesmo `supabase/schema.sql`, com RLS de verdade
 - Fonte **Manrope**, ícones Ionicons
 
 ## Estrutura
@@ -49,6 +52,7 @@ src/
     orcamentos.tsx        orçamentos do mês; orcamento/editar (?categoria=id)
     metas.tsx             metas; meta/[id] (detalhe), meta/editar (?id), meta/movimentar/[id] (?tipo=guardar|retirar)
     cambio.tsx            cotações e conversor
+    nuvem/                sincronização: index (status e sair), entrar, codigo (confirmar e-mail), recuperar
   components/ui/          design system: Text, Button, Money, MoneyInput, Segmented, Chip,
                           Surface, TextField, DatePickerSheet, ConfirmDialog, Toast, Screen…
   db/
@@ -69,6 +73,9 @@ src/
     goals/                metas: progresso, quanto guardar por mês, entradas e retiradas
     backup/               backup JSON (criar, validar, restaurar), planilha CSV, salvar/abrir arquivos
     security/             bloqueio com biometria (LockGate) e autenticação
+    sync/                 engine.ts (envio/recebimento), cliente e login do Supabase, SyncManager,
+                          remoteSchema.ts (gera o SQL da nuvem)
+supabase/schema.sql       tabelas, RLS e gatilhos da nuvem (gerado; cole no SQL Editor)
     catalog/              metadados locais (app_meta)
     home/                 cartão de saldo e gráfico mensal
     rates/                cotações (AwesomeAPI)
@@ -132,15 +139,59 @@ src/
   abre direto no Excel.
 - **Bloqueio**: Face ID/digital (ou o PIN do aparelho). Pede de novo depois de 1 minuto fora do app e
   cobre a tela no alternador de apps. Só liga se o aparelho tiver biometria ou senha configurada.
+- **Sincronização** ("local primeiro"): o app lê e grava sempre no SQLite; a nuvem é cópia.
+  - Toda gravação entra numa fila (`sync_outbox`, preenchida por gatilhos do SQLite). O envio manda
+    a fila em lotes, pais antes dos filhos; o recebimento baixa o que mudou desde o último cursor
+    (`server_updated_at`, com 2 minutos de folga) e aplica tudo numa transação só.
+  - Conflito: **vence a última edição** (`updated_at`). A nuvem ignora gravações mais antigas que a
+    dela (gatilho `finance_sync_row`) e o aparelho ignora linhas mais antigas que a sua.
+  - Exclusões são suaves (`deleted_at`), então chegam aos outros aparelhos. Registro que some de vez
+    do aparelho (restaurar backup) vira "excluído" na nuvem.
+  - Contas/categorias padrão e ocorrências de recorrência ainda não tocadas têm `updated_at` de 1970:
+    sempre perdem para uma edição de verdade (um celular novo não desfaz o nome que você deu a uma
+    categoria). Orçamento tem ID fixo por categoria, para não duplicar entre aparelhos.
+  - Na nuvem a chave é (`user_id`, `id`) e o RLS só deixa cada conta ler e gravar as próprias linhas.
+  - Quando: ao entrar, ao abrir/voltar para o app, 3 s depois de cada alteração e a cada 5 minutos.
+  - **Primeiro login**: o que já está no aparelho se junta à conta. **Sair da conta** apaga os dados do
+    aparelho (avisa se algo ainda não subiu); eles voltam ao entrar de novo. Se o aparelho tiver
+    dados de outra conta, o app não mistura: pede para apagar antes.
+  - Não sincronizam: tema, lembretes, bloqueio, "ocultar valores" (são de cada aparelho).
 - **Dados da versão 1**: na primeira abertura, a tabela antiga `transacoes` é convertida
   (valores para centavos, datas para ISO, tipo preservado) e renomeada para
   `legacy_transacoes_v1` como cópia de segurança. Transações com valor zero são ignoradas.
 
+## Sincronização com o Supabase
+
+Opcional: sem isso o app funciona normalmente, só no aparelho. O plano gratuito do Supabase basta.
+
+1. **Crie o projeto** em [supabase.com](https://supabase.com) (New project). Guarde a senha do banco.
+2. **Crie as tabelas**: no painel, abra **SQL Editor > New query**, cole o conteúdo de
+   `supabase/schema.sql` e clique em **Run**. Os avisos "already exists, skipping" são normais.
+   Rode de novo sempre que uma versão nova do app trouxer um `schema.sql` diferente.
+3. **Código no e-mail** (o app pede o código, não o link): em **Authentication > Emails**, nos modelos
+   **Confirm signup** e **Reset password**, troque o conteúdo por algo como
+   `<p>Seu código: <strong>{{ .Token }}</strong></p>`.
+   - Alternativa para uso só seu: em **Authentication > Sign In / Providers > Email**, desligue
+     **Confirm email**; aí a conta já entra direto, sem código.
+   - O envio de e-mails padrão do Supabase é limitado (poucos por hora e, em projetos novos, só para
+     os e-mails da equipe do projeto). Para outras pessoas usarem, configure um SMTP próprio
+     (Authentication > Emails > SMTP Settings).
+4. **Ligue o app ao projeto**: copie `.env.example` para `.env` e preencha com a **URL** e a
+   **Publishable key** (botão **Connect** no topo do painel, ou Project Settings > API Keys).
+   Projetos antigos podem usar a chave `anon` no lugar da publishable. As duas são públicas por
+   natureza (quem protege os dados é o RLS); nunca coloque a `service_role`/`secret` no app.
+5. Reinicie com `npx expo start --clear` (variáveis do `.env` só entram ao reiniciar).
+   No app: **Mais > Sincronização na nuvem > Criar conta**.
+
+Projetos gratuitos do Supabase pausam depois de uma semana sem uso; é só reativar no painel.
+Enquanto isso o app continua funcionando e envia tudo quando a nuvem voltar.
+
 ## Observações
 
 - Na web as preferências (tema, ocultar valores) usam `localStorage`; no celular, o kv-store do expo-sqlite.
-- Na web, o expo-sqlite tem um tempo-limite curto para consultas síncronas e às vezes acusa
-  "Sync operation timeout" em recargas rápidas. No Android/iOS o acesso é direto e isso não acontece.
+- Na web, o expo-sqlite desistia de consultas síncronas depois de poucos milissegundos
+  ("Sync operation timeout"). O `patches/expo-sqlite+58.0.15.patch` troca isso por um limite de
+  10 segundos; o `npm install` aplica o patch sozinho (patch-package). No Android/iOS nada muda.
 - O bloqueio com biometria não existe na web. Backup e planilha na web viram download, e restaurar abre o seletor de arquivo.
 - No Expo Go o Face ID usa a permissão do próprio Expo Go; num build próprio, a mensagem configurada no `app.json`.
 
@@ -155,4 +206,5 @@ src/
 - [x] **Fase 4**: contas a pagar e a receber, recorrências (com débito automático e valor variável),
       lembretes de vencimento, saldo previsto para o fim do mês
 - [x] **Fase 5**: dashboard novo, orçamentos por categoria, metas, backup/exportação, biometria
-- [ ] **Sync**: login e sincronização com o Supabase (fila local + `updated_at`, RLS por usuário)
+- [x] **Fase 6, sync**: login com e-mail e senha, sincronização com o Supabase (fila local, última
+      edição vence, RLS por usuário), vários aparelhos, sair apagando os dados do aparelho

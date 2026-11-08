@@ -6,6 +6,7 @@ import { recurrences, transactions, type Recurrence } from '@/db/schema';
 import { FALLBACK_CATEGORY } from '@/db/seed';
 import { invoiceMonthFor } from '@/features/cards/cycle';
 import { getCard } from '@/features/cards/repository';
+import { SYNC_EPOCH } from '@/db/sync-tables';
 import { nowTimestamp, todayISO, toISODate, type ISODate } from '@/lib/dates';
 import {
   nextOccurrence,
@@ -158,7 +159,8 @@ export function generateRecurrence(db: AppDb, id: string, today: ISODate = today
         recurrenceId: r.id,
         origin: 'recurrence',
         createdAt: now,
-        updatedAt: now,
+        // Ocorrência ainda não tocada: perde para qualquer edição feita em outro aparelho.
+        updatedAt: SYNC_EPOCH,
       })
       .onConflictDoNothing()
       .run();

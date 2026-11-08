@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { monthRange, parseLegacyDate, shiftMonth } from './dates';
+import { formatSince, monthRange, parseLegacyDate, shiftMonth } from './dates';
 
 describe('parseLegacyDate (datas da versão 1)', () => {
   it('lê o formato pt-BR', () => {
@@ -31,5 +31,16 @@ describe('meses', () => {
   });
   it('calcula o intervalo do mês', () => {
     expect(monthRange('2028-02')).toEqual(['2028-02-01', '2028-02-29']);
+  });
+});
+
+describe('formatSince', () => {
+  it('diz há quanto tempo foi', () => {
+    const now = new Date('2026-11-08T12:00:00Z');
+    expect(formatSince('2026-11-08T11:59:30Z', now)).toBe('agora mesmo');
+    expect(formatSince('2026-11-08T11:55:00Z', now)).toBe('há 5 minutos');
+    expect(formatSince('2026-11-08T10:00:00Z', now)).toBe('há 2 horas');
+    expect(formatSince('2026-11-05T12:00:00Z', now)).toBe('há 3 dias');
+    expect(formatSince('lixo', now)).toBe('');
   });
 });

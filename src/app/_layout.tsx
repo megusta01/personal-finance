@@ -20,6 +20,7 @@ import { DATABASE_NAME, DbProvider } from '@/db/client';
 import { migrate } from '@/db/migrations';
 import { BackgroundJobs } from '@/features/reminders/BackgroundJobs';
 import { LockGate } from '@/features/security/LockGate';
+import { SyncManager } from '@/features/sync/SyncManager';
 import { AppThemeProvider, useTheme } from '@/theme/ThemeProvider';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -55,6 +56,7 @@ export default function RootLayout() {
             >
               <DbProvider>
                 <BackgroundJobs />
+                <SyncManager />
                 <ToastProvider>
                   <LockGate>
                     <Navigation />
@@ -121,6 +123,10 @@ function Navigation() {
         <Stack.Screen name="meta/editar" options={{ presentation: 'modal' }} />
         <Stack.Screen name="meta/movimentar/[id]" options={{ presentation: 'modal' }} />
         <Stack.Screen name="cambio" />
+        <Stack.Screen name="nuvem/index" />
+        <Stack.Screen name="nuvem/entrar" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="nuvem/codigo" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="nuvem/recuperar" options={{ presentation: 'modal' }} />
       </Stack>
     </ThemeProvider>
   );

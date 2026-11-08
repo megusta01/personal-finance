@@ -6,6 +6,7 @@ import {
   FALLBACK_CATEGORY,
   SYSTEM_CATEGORIES,
 } from './seed';
+import { outboxTriggersSql, SYNC_EPOCH, SYNC_TABLES } from './sync-tables';
 
 /**
  * Migrations versionadas com PRAGMA user_version.
@@ -389,7 +390,79 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 6,
+    name: 'fila de sincronização',
+    up: async (db) => {
+      // Uma linha por registro alterado. ver sobe a cada nova alteração: o envio só tira da
+      // fila a versão que leu, então o que mudar durante o envio fica para a próxima vez.
+      await db.execAsync(`
+        CREATE TABLE sync_outbox (
+          tbl     TEXT NOT NULL,
+          row_id  TEXT NOT NULL,
+          ver     INTEGER NOT NULL DEFAULT 0,
+          PRIMARY KEY (tbl, row_id)
+        ) WITHOUT ROWID;
+        CREATE TABLE sync_state (
+          id        INTEGER PRIMARY KEY CHECK (id = 1),
+          applying  INTEGER NOT NULL DEFAULT 0
+        );
+        INSERT INTO sync_state (id, applying) VALUES (1, 0);
+      `);
+      // Padrões e ocorrências que ninguém editou passam a "perder" para edições reais.
+      await db.runAsync(
+        `UPDATE accounts SET updated_at = ? WHERE id = ? AND updated_at = created_at`,
+        [SYNC_EPOCH, DEFAULT_ACCOUNT.id],
+      );
+      await db.runAsync(
+        `UPDATE categories SET updated_at = ?
+          WHERE (id LIKE 'cat-%' OR id LIKE 'sub-%') AND updated_at = created_at`,
+        [SYNC_EPOCH],
+      );
+      await db.runAsync(
+        `UPDATE transactions SET updated_at = ?
+          WHERE origin = 'recurrence' AND updated_at = created_at`,
+        [SYNC_EPOCH],
+      );
+      for (const t of SYNC_TABLES) await db.execAsync(outboxTriggersSql(t));
+    },
+  },
 ];
+
+/**
+ * Recria contas e categorias padrão (ao sair da conta, o aparelho volta a ficar como novo).
+ * Mesmos IDs fixos das migrations 1 e 2, com o carimbo SYNC_EPOCH.
+ */
+export async function insertDefaults(db: MigrationDb) {
+  const now = nowTimestamp();
+  const a = DEFAULT_ACCOUNT;
+  await db.runAsync(
+    `INSERT OR IGNORE INTO accounts (id, name, type, color, icon, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [a.id, a.name, a.type, a.color, a.icon, now, SYNC_EPOCH],
+  );
+  for (const [i, c] of DEFAULT_CATEGORIES.entries()) {
+    await db.runAsync(
+      `INSERT OR IGNORE INTO categories (id, name, kind, icon, color, sort_order, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [c.id, c.name, c.kind, c.icon, c.color, i, now, SYNC_EPOCH],
+    );
+  }
+  for (const c of SYSTEM_CATEGORIES) {
+    await db.runAsync(
+      `INSERT OR IGNORE INTO categories (id, name, kind, icon, color, sort_order, is_system, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, 999, 1, ?, ?)`,
+      [c.id, c.name, c.kind, c.icon, c.color, now, SYNC_EPOCH],
+    );
+  }
+  for (const [i, sub] of DEFAULT_SUBCATEGORIES.entries()) {
+    await db.runAsync(
+      `INSERT OR IGNORE INTO categories (id, name, kind, icon, color, parent_id, sort_order, created_at, updated_at)
+       SELECT ?, ?, kind, icon, color, id, ?, ?, ? FROM categories WHERE id = ?`,
+      [sub.id, sub.name, i, now, SYNC_EPOCH, sub.parentId],
+    );
+  }
+}
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1]!.version;
 

@@ -1,6 +1,5 @@
 import { getDaysInMonth, parseISO } from 'date-fns';
 import { and, eq, isNull } from 'drizzle-orm';
-import { randomUUID } from 'expo-crypto';
 import type { AppDb } from '@/db/client';
 import { budgets, categories } from '@/db/schema';
 import { totalsByCategory } from '@/features/reports/repository';
@@ -96,6 +95,8 @@ export function budgetSummary(status: BudgetStatus[]) {
 }
 
 /** Define (ou atualiza) o orçamento mensal de uma categoria principal de despesa. */
+export const budgetIdFor = (categoryId: string) => `budget:${categoryId}`;
+
 export function setBudget(db: AppDb, categoryId: string, amountCents: number): string {
   if (!Number.isInteger(amountCents) || amountCents <= 0)
     throw new Error('O valor precisa ser maior que zero.');
@@ -115,8 +116,16 @@ export function setBudget(db: AppDb, categoryId: string, amountCents: number): s
       .run();
     return existing.id;
   }
-  const id = randomUUID();
-  db.insert(budgets).values({ id, categoryId, amountCents, createdAt: now, updatedAt: now }).run();
+  // ID fixo por categoria: dois aparelhos criando o orçamento da mesma categoria
+  // viram um registro só no sync (em vez de dois orçamentos para a mesma categoria).
+  const id = budgetIdFor(categoryId);
+  db.insert(budgets)
+    .values({ id, categoryId, amountCents, createdAt: now, updatedAt: now })
+    .onConflictDoUpdate({
+      target: budgets.id,
+      set: { categoryId, amountCents, updatedAt: now, deletedAt: null },
+    })
+    .run();
   return id;
 }
 

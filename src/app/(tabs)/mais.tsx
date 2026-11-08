@@ -41,10 +41,30 @@ import {
   usePrefs,
   type ThemePref,
 } from '@/lib/prefs';
+import { syncConfigured } from '@/features/sync/client';
+import { useSyncStatus } from '@/features/sync/service';
+import { useSession } from '@/features/sync/session';
 import { useTheme } from '@/theme/ThemeProvider';
 import { space } from '@/theme/tokens';
 
 export default function Mais() {
+  const { session } = useSession();
+  const syncStatus = useSyncStatus();
+  const syncIcon: keyof typeof Ionicons.glyphMap = !session
+    ? 'cloud-outline'
+    : syncStatus.error
+      ? 'cloud-offline-outline'
+      : 'cloud-done-outline';
+  const syncSubtitle = !syncConfigured
+    ? 'Não configurada. Toque para ver como ligar.'
+    : !session
+      ? 'Entre com sua conta para usar em mais de um aparelho'
+      : syncStatus.running
+        ? `${session.user.email} · sincronizando…`
+        : syncStatus.error
+          ? `${session.user.email} · ${syncStatus.error.kind === 'offline' ? 'sem conexão' : 'precisa de atenção'}`
+          : `${session.user.email} · em dia`;
+
   const { colors } = useTheme();
   const prefs = usePrefs();
   const db = useDb();
@@ -376,11 +396,11 @@ export default function Mais() {
           chevron={false}
         />
         <Divider inset={56} />
-        <InfoRow
-          icon="sync-outline"
+        <ListRow
           title="Sincronização na nuvem"
-          detail="Em uma próxima versão: entrar com sua conta para usar em mais de um aparelho."
-          muted
+          subtitle={syncSubtitle}
+          left={<Ionicons name={syncIcon} size={22} color={colors.brand} />}
+          onPress={() => router.push('/nuvem')}
         />
       </Surface>
       <ConfirmDialog
@@ -388,7 +408,7 @@ export default function Mais() {
         title="Restaurar este backup?"
         message={
           pending
-            ? `Backup de ${formatDateShort(pending.info.createdAt.slice(0, 10))}, com ${pending.info.transactions} lançamentos. Todos os dados atuais deste aparelho serão substituídos. Se quiser, faça um backup antes.`
+            ? `Backup de ${formatDateShort(pending.info.createdAt.slice(0, 10))}, com ${pending.info.transactions} lançamentos. Todos os dados atuais deste aparelho serão substituídos${session ? ' (e na sua conta na nuvem também, inclusive nos outros aparelhos)' : ''}. Se quiser, faça um backup antes.`
             : undefined
         }
         confirmLabel="Restaurar"

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { migrationDb as adapter, openTestDb } from '@/test/sqlite';
 import { LATEST_VERSION, migrate, MIGRATIONS } from './migrations';
+import { SYNC_EPOCH } from './sync-tables';
 import { DEFAULT_CATEGORIES, DEFAULT_SUBCATEGORIES, SYSTEM_CATEGORIES } from './seed';
 
 /** Cria um banco igual ao da versão 1 do app (services/database.js). */
@@ -225,5 +226,36 @@ describe('migrate', () => {
       expect(raw.prepare(`SELECT count(*) AS n FROM ${t}`).get()).toEqual({ n: 0 });
     }
     expect(raw.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+  });
+
+  it('atualiza da 5 para a 6: padrões não tocados perdem para edições e gravações entram na fila', async () => {
+    const raw = openTestDb();
+    const db = adapter(raw);
+    for (const m of MIGRATIONS.slice(0, 5)) await m.up(db);
+    raw.exec('PRAGMA user_version = 5');
+    raw.exec(
+      `UPDATE categories SET name = 'Comida', updated_at = '2026-11-01T00:00:00.000Z' WHERE id = 'cat-exp-food'`,
+    );
+    expect(await migrate(db)).toEqual({ from: 5, to: LATEST_VERSION });
+
+    const updated = (id: string) =>
+      (
+        raw.prepare('SELECT updated_at FROM categories WHERE id = ?').get(id) as {
+          updated_at: string;
+        }
+      ).updated_at;
+    expect(updated('cat-exp-groceries')).toBe(SYNC_EPOCH);
+    expect(updated('cat-exp-food')).toBe('2026-11-01T00:00:00.000Z');
+    expect(raw.prepare('SELECT count(*) AS n FROM sync_outbox').get()).toEqual({ n: 0 });
+
+    raw.exec(`UPDATE accounts SET name = 'Bolso' WHERE id = 'acc-default-wallet'`);
+    raw.exec(`UPDATE accounts SET name = 'Bolso 2' WHERE id = 'acc-default-wallet'`);
+    expect(raw.prepare('SELECT tbl, row_id FROM sync_outbox').all()).toEqual([
+      { tbl: 'accounts', row_id: 'acc-default-wallet' },
+    ]);
+    // Gravações do próprio sync (applying = 1) não voltam para a fila.
+    raw.exec('DELETE FROM sync_outbox; UPDATE sync_state SET applying = 1');
+    raw.exec(`UPDATE accounts SET name = 'Da nuvem' WHERE id = 'acc-default-wallet'`);
+    expect(raw.prepare('SELECT count(*) AS n FROM sync_outbox').get()).toEqual({ n: 0 });
   });
 });

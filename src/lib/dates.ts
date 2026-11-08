@@ -1,6 +1,7 @@
 import {
   addMonths,
   format,
+  formatDistanceStrict,
   isToday,
   isYesterday,
   parseISO,
@@ -156,4 +157,12 @@ export function parseLegacyDate(raw: string): { date: ISODate; timestamp: string
     return null;
   }
   return { date: toISODate(d), timestamp: d.toISOString() };
+}
+
+/** "agora mesmo", "há 5 minutos", "há 2 horas", "há 3 dias". */
+export function formatSince(timestamp: string, now = new Date()): string {
+  const t = new Date(timestamp);
+  if (Number.isNaN(t.getTime())) return '';
+  if (now.getTime() - t.getTime() < 60_000) return 'agora mesmo';
+  return `há ${formatDistanceStrict(t, now, { locale: ptBR, roundingMethod: 'floor' })}`;
 }

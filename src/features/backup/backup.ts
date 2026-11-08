@@ -8,6 +8,7 @@
  */
 import { sql } from 'drizzle-orm';
 import type { AppDb } from '@/db/client';
+import { getMeta } from '@/features/catalog/meta';
 import { LATEST_VERSION } from '@/db/migrations';
 
 export const BACKUP_FORMAT = 'financas-backup';
@@ -117,7 +118,15 @@ export function describeBackup(b: Backup): BackupInfo {
 export function restoreBackup(db: AppDb, backup: Backup) {
   db.run(sql`BEGIN`);
   try {
+    // Com a conta da nuvem ligada, o que sumir com a restauração precisa sumir na nuvem
+    // também: tudo o que existe agora entra na fila, e o que não voltar vira "excluído" lá.
+    const linked = tableExists(db, 'sync_outbox') && !!getMeta(db, 'sync.user_id');
     for (const t of [...BACKUP_TABLES].reverse()) {
+      if (linked)
+        db.run(
+          sql`INSERT INTO sync_outbox (tbl, row_id) SELECT ${t}, id FROM ${sql.identifier(t)} WHERE true
+              ON CONFLICT (tbl, row_id) DO UPDATE SET ver = ver + 1`,
+        );
       if (tableExists(db, t)) db.run(sql.raw(`DELETE FROM ${t}`));
     }
     for (const t of BACKUP_TABLES) {

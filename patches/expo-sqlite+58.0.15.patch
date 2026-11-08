@@ -1,0 +1,37 @@
+diff --git a/node_modules/expo-sqlite/web/WorkerChannel.ts b/node_modules/expo-sqlite/web/WorkerChannel.ts
+index 2c5ff82..ae77185 100644
+--- a/node_modules/expo-sqlite/web/WorkerChannel.ts
++++ b/node_modules/expo-sqlite/web/WorkerChannel.ts
+@@ -124,24 +124,20 @@ export function invokeWorkerSync<T extends SQLiteWorkerMessageType & keyof Resul
+     resultBuffer,
+   });
+ 
+-  let i = 0;
++  // PATCH (finanças): o limite original era um número fixo de voltas (1 milhão de
++  // Atomics.pause), que no Chrome atual dá poucos milissegundos e derruba gravações normais
++  // ("Sync operation timeout"). Aqui o limite é por tempo: 10 segundos.
+   // @ts-expect-error: Remove this when TypeScript supports Atomics.pause
+   const useAtomicsPause = typeof Atomics.pause === 'function';
++  const deadline = Date.now() + 10_000;
++  let i = 0;
+   while (Atomics.load(lock, 0) === PENDING) {
+-    ++i;
+-
+     if (useAtomicsPause) {
+-      if (i > 1_000_000) {
+-        throw new Error('Sync operation timeout');
+-      }
+       // @ts-expect-error: Remove this when TypeScript supports Atomics.pause
+       Atomics.pause();
+-    } else {
+-      // NOTE(kudo): Unfortunate for the busy loop,
+-      // because we don't have a way for main thread to yield its execution to other callbacks.
+-      if (i > 1000_000_000) {
+-        throw new Error('Sync operation timeout');
+-      }
++    }
++    if (++i % 1000 === 0 && Date.now() > deadline) {
++      throw new Error('Sync operation timeout');
+     }
+   }
+ 
