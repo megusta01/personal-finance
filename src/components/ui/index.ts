@@ -18,3 +18,4 @@ export { FormLayout } from './FormLayout';
 export { ListRow } from './ListRow';
 export { ColorPicker, IconPicker } from './Pickers';
 export { OptionSheet, Sheet, type SheetOption } from './Sheet';
+export { DayPicker } from './DayPicker';

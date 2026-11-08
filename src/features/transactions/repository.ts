@@ -2,14 +2,14 @@ import { and, desc, eq, gte, inArray, isNull, like, lte, or, sql, type SQL } fro
 import { alias } from 'drizzle-orm/sqlite-core';
 import { randomUUID } from 'expo-crypto';
 import type { AppDb } from '@/db/client';
-import { accounts, categories, transactions, type TransactionKind } from '@/db/schema';
+import { accounts, categories, creditCards, transactions, type TransactionKind } from '@/db/schema';
 import { ADJUSTMENT_CATEGORY } from '@/db/seed';
 import { categoryFamilyIds } from '@/features/categories/repository';
 import { monthRange, nowTimestamp, shiftMonth, type ISODate, type MonthKey } from '@/lib/dates';
 
 export { totalBalance } from '@/features/accounts/repository';
 
-export const TX_TABLES = ['transactions', 'categories', 'accounts'];
+export const TX_TABLES = ['transactions', 'categories', 'accounts', 'credit_cards'];
 
 type Common = {
   amountCents: number;
@@ -48,12 +48,19 @@ function listSelect(db: AppDb) {
       accountName: accounts.name,
       toAccountId: transactions.toAccountId,
       toAccountName: toAccount.name,
+      cardId: transactions.cardId,
+      cardName: creditCards.name,
+      invoiceMonth: transactions.invoiceMonth,
+      installmentGroupId: transactions.installmentGroupId,
+      installmentNumber: transactions.installmentNumber,
+      installmentCount: transactions.installmentCount,
     })
     .from(transactions)
     .leftJoin(categories, eq(categories.id, transactions.categoryId))
     .leftJoin(parentCategory, eq(parentCategory.id, categories.parentId))
     .leftJoin(accounts, eq(accounts.id, transactions.accountId))
-    .leftJoin(toAccount, eq(toAccount.id, transactions.toAccountId));
+    .leftJoin(toAccount, eq(toAccount.id, transactions.toAccountId))
+    .leftJoin(creditCards, eq(creditCards.id, transactions.cardId));
 }
 
 export type TransactionRow = ReturnType<ReturnType<typeof listSelect>['all']>[number];
@@ -68,6 +75,8 @@ export type MonthFilter = {
   accountId?: string | null;
   /** A categoria e todas as subcategorias dela. */
   categoryId?: string | null;
+  /** Compras, estornos e pagamentos de fatura desse cartão. */
+  cardId?: string | null;
 };
 
 function filterWhere(db: AppDb, f: Omit<MonthFilter, 'month'>): SQL[] {
@@ -83,6 +92,7 @@ function filterWhere(db: AppDb, f: Omit<MonthFilter, 'month'>): SQL[] {
     f.categoryId
       ? inArray(transactions.categoryId, categoryFamilyIds(db, f.categoryId))
       : undefined,
+    f.cardId ? eq(transactions.cardId, f.cardId) : undefined,
   ];
   return out.filter((x): x is SQL => !!x);
 }
@@ -98,6 +108,18 @@ export function listByMonth(db: AppDb, { month, ...filters }: MonthFilter): Tran
         ...filterWhere(db, filters),
       ),
     )
+    .orderBy(desc(transactions.occurredOn), desc(transactions.createdAt))
+    .all();
+}
+
+/** Itens de uma fatura do cartão: compras, estornos e pagamentos. */
+export function listInvoiceItems(
+  db: AppDb,
+  cardId: string,
+  invoiceMonth: MonthKey,
+): TransactionRow[] {
+  return listSelect(db)
+    .where(and(alive, eq(transactions.cardId, cardId), eq(transactions.invoiceMonth, invoiceMonth)))
     .orderBy(desc(transactions.occurredOn), desc(transactions.createdAt))
     .all();
 }
@@ -136,7 +158,12 @@ const expenseSum = sumWhen(sql`${transactions.kind} = 'expense'`);
  * Sem conta: só receitas e despesas (transferência entre contas e ajuste de saldo não são ganho nem gasto).
  * Com conta: transferências recebidas contam como entrada e as enviadas como saída.
  */
-export function monthTotals(db: AppDb, month: MonthKey, accountId?: string | null): Totals {
+export function monthTotals(
+  db: AppDb,
+  month: MonthKey,
+  accountId?: string | null,
+  cardId?: string | null,
+): Totals {
   const [from, to] = monthRange(month);
   const range = [
     alive,
@@ -144,6 +171,18 @@ export function monthTotals(db: AppDb, month: MonthKey, accountId?: string | nul
     gte(transactions.occurredOn, from),
     lte(transactions.occurredOn, to),
   ];
+  if (cardId && !accountId) {
+    // Visão do cartão: compras são saídas; estornos e pagamentos de fatura, entradas.
+    const row = db
+      .select({
+        incomeCents: sumWhen(sql`${transactions.kind} in ('income', 'card_payment')`),
+        expenseCents: expenseSum,
+      })
+      .from(transactions)
+      .where(and(...range, eq(transactions.cardId, cardId)))
+      .get();
+    return { incomeCents: row?.incomeCents ?? 0, expenseCents: row?.expenseCents ?? 0 };
+  }
   if (!accountId) {
     const row = db
       .select({ incomeCents: incomeSum, expenseCents: expenseSum })
@@ -158,7 +197,7 @@ export function monthTotals(db: AppDb, month: MonthKey, accountId?: string | nul
         sql`(${transactions.kind} = 'income' and ${transactions.accountId} = ${accountId}) or (${transactions.kind} = 'transfer' and ${transactions.toAccountId} = ${accountId})`,
       ),
       expenseCents: sumWhen(
-        sql`(${transactions.kind} in ('expense', 'transfer') and ${transactions.accountId} = ${accountId})`,
+        sql`(${transactions.kind} in ('expense', 'transfer', 'card_payment') and ${transactions.accountId} = ${accountId})`,
       ),
     })
     .from(transactions)
@@ -213,6 +252,15 @@ export function countTransactions(db: AppDb): number {
   return row?.n ?? 0;
 }
 
+/** Lançamentos de conta não têm nada de cartão (limpa ao converter uma compra de cartão em conta). */
+const NO_CARD = {
+  cardId: null,
+  invoiceMonth: null,
+  installmentGroupId: null,
+  installmentNumber: null,
+  installmentCount: null,
+};
+
 function clean(input: TransactionInput) {
   if (!Number.isInteger(input.amountCents) || input.amountCents <= 0) {
     throw new Error('O valor precisa ser maior que zero.');
@@ -229,9 +277,9 @@ function clean(input: TransactionInput) {
     if (!input.toAccountId || input.toAccountId === input.accountId) {
       throw new Error('Escolha contas diferentes para a origem e o destino.');
     }
-    return { ...base, toAccountId: input.toAccountId, categoryId: null };
+    return { ...base, toAccountId: input.toAccountId, categoryId: null, ...NO_CARD };
   }
-  return { ...base, toAccountId: null, categoryId: input.categoryId };
+  return { ...base, toAccountId: null, categoryId: input.categoryId, ...NO_CARD };
 }
 
 export function createTransaction(db: AppDb, input: TransactionInput): string {
@@ -271,9 +319,16 @@ export function restoreTransaction(db: AppDb, id: string) {
 export function signedAmount(
   row: Pick<TransactionRow, 'kind' | 'amountCents' | 'accountId' | 'toAccountId'>,
   accountId?: string | null,
+  cardId?: string | null,
 ): number {
   if (row.kind === 'income') return row.amountCents;
   if (row.kind === 'expense') return -row.amountCents;
+  if (row.kind === 'card_payment') {
+    // Na conta, o pagamento é saída; na visão do cartão, abate a fatura; no total, é neutro.
+    if (accountId) return -row.amountCents;
+    if (cardId) return row.amountCents;
+    return 0;
+  }
   if (!accountId) return 0; // transferência não muda o total
   return row.toAccountId === accountId ? row.amountCents : -row.amountCents;
 }

@@ -10,7 +10,9 @@ export const ACCOUNT_TABLES = ['accounts', 'transactions'];
 /**
  * Saldo de uma conta = saldo inicial
  *   + receitas pagas − despesas pagas
- *   − transferências que saíram + transferências que entraram.
+ *   − transferências que saíram + transferências que entraram
+ *   − pagamentos de fatura feitos com ela.
+ * Compras no cartão não mexem no saldo da conta: só o pagamento da fatura mexe.
  */
 // Nomes qualificados à mão: dentro da subconsulta, uma coluna sem tabela ("id")
 // seria resolvida contra `transactions`, e não contra `accounts`.
@@ -19,6 +21,7 @@ const balanceSql = sql<number>`"accounts"."initial_balance_cents" + coalesce((
     when t.kind = 'income'   and t.account_id    = "accounts"."id" then t.amount_cents
     when t.kind = 'expense'  and t.account_id    = "accounts"."id" then -t.amount_cents
     when t.kind = 'transfer' and t.account_id    = "accounts"."id" then -t.amount_cents
+    when t.kind = 'card_payment' and t.account_id = "accounts"."id" then -t.amount_cents
     when t.kind = 'transfer' and t.to_account_id = "accounts"."id" then t.amount_cents
     else 0 end)
   from transactions t

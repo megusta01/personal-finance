@@ -15,7 +15,10 @@ import {
   totalBalance,
   TX_TABLES,
 } from '@/features/transactions/repository';
-import { formatDayHeading, greeting, monthKey, todayISO } from '@/lib/dates';
+import { CardVisual } from '@/features/cards/CardVisual';
+import { STATUS_META } from '@/features/cards/meta';
+import { listCardsOverview } from '@/features/cards/repository';
+import { formatDateShort, formatDayHeading, greeting, monthKey, todayISO } from '@/lib/dates';
 import { useTheme } from '@/theme/ThemeProvider';
 import { radius, space } from '@/theme/tokens';
 
@@ -39,6 +42,7 @@ export default function Home() {
       series: monthlySeries(db, month, 6),
       recent: listRecent(db, 5),
       accounts: listAccountsWithBalance(db),
+      cards: listCardsOverview(db),
     }),
     TX_TABLES,
     [month],
@@ -64,10 +68,10 @@ export default function Home() {
 
       <QuickActions />
 
-      {(data?.accounts.length ?? 0) > 1 && (
+      {((data?.accounts.length ?? 0) > 1 || (data?.cards.length ?? 0) > 0) && (
         <>
           <SectionHeader
-            title="Suas contas"
+            title={(data?.cards.length ?? 0) > 0 ? 'Contas e cartões' : 'Suas contas'}
             action={<SeeAll label="Ver contas" href="/contas" />}
           />
           <ScrollView
@@ -102,6 +106,47 @@ export default function Home() {
                 />
               </Pressable>
             ))}
+            {data!.cards.map((c) => {
+              const inv = c.current;
+              const amount =
+                inv.paidCents > 0 && inv.status !== 'paid' ? inv.remainingCents : inv.totalCents;
+              return (
+                <Pressable
+                  key={c.id}
+                  onPress={() => router.push(`/cartao/${c.id}`)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Cartão ${c.name}`}
+                  style={({ pressed }) => [
+                    styles.accountCard,
+                    {
+                      backgroundColor: colors.surface,
+                      borderColor: inv.status === 'overdue' ? colors.expense : colors.border,
+                    },
+                    pressed && { opacity: 0.8 },
+                  ]}
+                >
+                  <CardVisual compact name={c.name} brand={c.brand} color={c.color} />
+                  <Text variant="caption" tone="muted" numberOfLines={1}>
+                    {c.name}
+                  </Text>
+                  <Money
+                    cents={amount}
+                    variant="bodyStrong"
+                    tone={inv.status === 'overdue' ? 'expense' : 'default'}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                  />
+                  <Text
+                    variant="micro"
+                    tone={inv.status === 'overdue' ? 'expense' : 'subtle'}
+                    numberOfLines={1}
+                  >
+                    {STATUS_META[inv.status].label}, vence{' '}
+                    {formatDateShort(inv.dates.dueDate).slice(0, 5)}
+                  </Text>
+                </Pressable>
+              );
+            })}
             <View style={{ width: space.lg - space.md }} />
           </ScrollView>
         </>

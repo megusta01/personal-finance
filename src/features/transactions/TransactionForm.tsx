@@ -3,7 +3,8 @@ import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
-import { Platform, Pressable, StyleSheet, View } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { z } from 'zod';
 import {
   Button,
@@ -25,8 +26,24 @@ import type { Account, Category } from '@/db/schema';
 import { FALLBACK_CATEGORY } from '@/db/seed';
 import { ACCOUNT_TYPE_META } from '@/features/accounts/meta';
 import { getAccount, listActiveAccounts } from '@/features/accounts/repository';
+import { invoiceDates, invoiceMonthFor } from '@/features/cards/cycle';
+import {
+  deleteCardPurchase,
+  getCard,
+  listCards,
+  restoreRows,
+  saveCardPurchase,
+} from '@/features/cards/repository';
 import { getCategory, listCategoryTree, type CategoryNode } from '@/features/categories/repository';
-import { daysAgoISO, formatDateField, todayISO } from '@/lib/dates';
+import {
+  daysAgoISO,
+  formatDateField,
+  formatDateShort,
+  formatMonthLong,
+  shiftMonth,
+  todayISO,
+} from '@/lib/dates';
+import { formatBRL } from '@/lib/money';
 import { getLastAccountId, setLastAccountId } from '@/lib/prefs';
 import { useTheme } from '@/theme/ThemeProvider';
 import { radius, space } from '@/theme/tokens';
@@ -49,12 +66,27 @@ const schema = z
     description: z.string().trim().max(80, 'Use no máximo 80 caracteres.'),
     categoryId: z.string(),
     subcategoryId: z.string(),
-    accountId: z.string().min(1, 'Escolha uma conta.'),
+    /** Despesa/receita: sai de uma conta ou vai no cartão. */
+    source: z.enum(['account', 'card']),
+    accountId: z.string(),
     toAccountId: z.string(),
+    cardId: z.string(),
+    installments: z.number().int().min(1).max(48),
     occurredOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     notes: z.string().trim().max(500, 'Use no máximo 500 caracteres.'),
   })
   .superRefine((v, ctx) => {
+    const usesCard = v.kind !== 'transfer' && v.source === 'card';
+    if (usesCard && !v.cardId)
+      ctx.addIssue({ code: 'custom', path: ['cardId'], message: 'Escolha um cartão.' });
+    if (!usesCard && !v.accountId)
+      ctx.addIssue({ code: 'custom', path: ['accountId'], message: 'Escolha uma conta.' });
+    if (usesCard && v.amountCents > 0 && v.installments > v.amountCents)
+      ctx.addIssue({
+        code: 'custom',
+        path: ['installments'],
+        message: 'Valor baixo demais para tantas parcelas.',
+      });
     if (v.kind === 'transfer') {
       if (!v.toAccountId)
         ctx.addIssue({
@@ -76,6 +108,10 @@ const schema = z
 type Values = z.infer<typeof schema>;
 export type Kind = Values['kind'];
 
+const isTransferKind = (k: Kind) => k === 'transfer';
+
+const INSTALLMENT_OPTIONS = Array.from({ length: 24 }, (_, i) => i + 1);
+
 const COLUMNS = 4;
 const GRID_GAP = space.sm;
 
@@ -91,7 +127,12 @@ type Props = {
     toAccountId?: string | null;
     occurredOn?: string;
     notes?: string | null;
+    /** Compra/estorno no cartão. */
+    cardId?: string | null;
+    installments?: number;
   };
+  /** Se o que está sendo editado é uma compra no cartão (todas as parcelas juntas). */
+  editingCardPurchase?: boolean;
 };
 
 const NOUN: Record<Kind, { title: string; saved: string }> = {
@@ -108,7 +149,7 @@ function splitCategory(cat: Category | undefined): { categoryId: string; subcate
     : { categoryId: cat.id, subcategoryId: '' };
 }
 
-export function TransactionForm({ editingId, initial = {} }: Props) {
+export function TransactionForm({ editingId, initial = {}, editingCardPurchase = false }: Props) {
   const db = useDb();
   const toast = useToast();
   const { colors } = useTheme();
@@ -138,6 +179,9 @@ export function TransactionForm({ editingId, initial = {} }: Props) {
       toAccountId:
         initial.toAccountId ??
         (kind === 'transfer' ? (active.find((a) => a.id !== accountId)?.id ?? '') : ''),
+      source: initial.cardId && kind !== 'transfer' ? 'card' : 'account',
+      cardId: initial.cardId ?? listCards(db)[0]?.id ?? '',
+      installments: initial.installments ?? 1,
       occurredOn: initial.occurredOn ?? todayISO(),
       notes: initial.notes ?? '',
     };
@@ -153,9 +197,31 @@ export function TransactionForm({ editingId, initial = {} }: Props) {
     defaultValues: defaults,
   });
 
-  const [kind, occurredOn, categoryId, subcategoryId, accountId, toAccountId] = useWatch({
+  const [
+    kind,
+    occurredOn,
+    categoryId,
+    subcategoryId,
+    accountId,
+    toAccountId,
+    source,
+    cardId,
+    installments,
+    amountCents,
+  ] = useWatch({
     control,
-    name: ['kind', 'occurredOn', 'categoryId', 'subcategoryId', 'accountId', 'toAccountId'],
+    name: [
+      'kind',
+      'occurredOn',
+      'categoryId',
+      'subcategoryId',
+      'accountId',
+      'toAccountId',
+      'source',
+      'cardId',
+      'installments',
+      'amountCents',
+    ],
   });
 
   const { data: catalog } = useDbQuery(
@@ -173,13 +239,21 @@ export function TransactionForm({ editingId, initial = {} }: Props) {
           if (row) accounts.push(row);
         }
       }
-      return { tree, accounts };
+      const cards = listCards(d);
+      if (defaults.cardId && !cards.some((c) => c.id === defaults.cardId)) {
+        const row = getCard(d, defaults.cardId);
+        if (row) cards.push(row);
+      }
+      return { tree, accounts, cards };
     },
-    ['categories', 'accounts'],
+    ['categories', 'accounts', 'credit_cards'],
     [kind, categoryId],
   );
 
   const accounts = catalog?.accounts ?? [];
+  const cards = catalog?.cards ?? [];
+  const usesCard = !isTransferKind(kind) && source === 'card';
+  const card = cards.find((c) => c.id === cardId);
   const parent = catalog?.tree.find((c) => c.id === categoryId);
   const accent =
     kind === 'income' ? colors.income : kind === 'expense' ? colors.expense : colors.brand;
@@ -189,6 +263,7 @@ export function TransactionForm({ editingId, initial = {} }: Props) {
 
   const changeKind = (k: Kind) => {
     setValue('kind', k);
+    if (k !== 'expense') setValue('installments', 1);
     if (k === 'transfer') {
       setValue('categoryId', '');
       setValue('subcategoryId', '');
@@ -201,6 +276,39 @@ export function TransactionForm({ editingId, initial = {} }: Props) {
   };
 
   const onSubmit = handleSubmit((v) => {
+    const categoryName =
+      parent?.children.find((c) => c.id === v.subcategoryId)?.name ??
+      catalog?.tree.find((c) => c.id === v.categoryId)?.name;
+
+    // Compra ou estorno no cartão
+    if (v.kind !== 'transfer' && v.source === 'card') {
+      const purchase = {
+        cardId: v.cardId,
+        kind: v.kind,
+        totalCents: v.amountCents,
+        installments: v.kind === 'expense' ? v.installments : 1,
+        description:
+          v.description.trim() || categoryName || (v.kind === 'income' ? 'Estorno' : 'Compra'),
+        categoryId: v.subcategoryId || v.categoryId,
+        purchasedOn: v.occurredOn,
+        notes: v.notes,
+      };
+      // Era um lançamento de conta e virou compra no cartão: troca um pelo outro.
+      if (editingId && !editingCardPurchase) deleteTransaction(db, editingId);
+      saveCardPurchase(db, purchase, editingId && editingCardPurchase ? editingId : undefined);
+      done(
+        v.kind === 'income'
+          ? 'Estorno registrado'
+          : v.installments > 1
+            ? `Compra em ${v.installments}x registrada`
+            : 'Compra registrada',
+      );
+      return;
+    }
+    // Era compra no cartão e virou lançamento de conta.
+    if (editingId && editingCardPurchase) deleteCardPurchase(db, editingId);
+    const updateId = editingId && !editingCardPurchase ? editingId : undefined;
+
     let input: TransactionInput;
     if (v.kind === 'transfer') {
       input = {
@@ -214,9 +322,7 @@ export function TransactionForm({ editingId, initial = {} }: Props) {
       };
     } else {
       const finalCategory = v.subcategoryId || v.categoryId;
-      const name =
-        parent?.children.find((c) => c.id === v.subcategoryId)?.name ??
-        catalog?.tree.find((c) => c.id === v.categoryId)?.name;
+      const name = categoryName;
       input = {
         kind: v.kind,
         amountCents: v.amountCents,
@@ -228,24 +334,39 @@ export function TransactionForm({ editingId, initial = {} }: Props) {
         notes: v.notes,
       };
     }
-    if (editingId) updateTransaction(db, editingId, input);
+    if (updateId) updateTransaction(db, updateId, input);
     else createTransaction(db, input);
     setLastAccountId(v.accountId);
-    if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    toast({ message: editingId ? 'Alterações salvas' : NOUN[v.kind].saved });
-    router.back();
+    done(NOUN[v.kind].saved);
   });
+
+  function done(message: string) {
+    if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    toast({ message: editingId ? 'Alterações salvas' : message });
+    router.back();
+  }
 
   const onDelete = () => {
     if (!editingId) return;
-    deleteTransaction(db, editingId);
     setConfirmDelete(false);
-    toast({
-      message: 'Transação excluída',
-      actionLabel: 'Desfazer',
-      onAction: () => restoreTransaction(db, editingId),
-      duration: 6000,
-    });
+    if (editingCardPurchase) {
+      // Compra parcelada: exclui todas as parcelas juntas.
+      const ids = deleteCardPurchase(db, editingId);
+      toast({
+        message: ids.length > 1 ? `Compra excluída (${ids.length} parcelas)` : 'Compra excluída',
+        actionLabel: 'Desfazer',
+        onAction: () => restoreRows(db, ids),
+        duration: 6000,
+      });
+    } else {
+      deleteTransaction(db, editingId);
+      toast({
+        message: 'Transação excluída',
+        actionLabel: 'Desfazer',
+        onAction: () => restoreTransaction(db, editingId),
+        duration: 6000,
+      });
+    }
     router.back();
   };
 
@@ -442,14 +563,69 @@ export function TransactionForm({ editingId, initial = {} }: Props) {
             </View>
           </Field>
 
-          {!isTransfer && accounts.length > 0 && (
-            <Field label="Conta" error={errors.accountId?.message}>
-              <AccountChips
-                accounts={accounts}
-                value={accountId}
-                onChange={(id) => setValue('accountId', id)}
-              />
+          {!isTransfer && (
+            <Field
+              label={kind === 'expense' ? 'Pagar com' : 'Recebido em'}
+              error={errors.accountId?.message ?? errors.cardId?.message}
+            >
+              <View style={styles.row} accessibilityRole="radiogroup">
+                {accounts.map((a) => (
+                  <Chip
+                    key={a.id}
+                    icon={ACCOUNT_TYPE_META[a.type].icon}
+                    label={a.name}
+                    selected={source === 'account' && accountId === a.id}
+                    onPress={() => {
+                      setValue('source', 'account');
+                      setValue('accountId', a.id);
+                      setValue('installments', 1);
+                    }}
+                  />
+                ))}
+                {cards.map((c) => (
+                  <Chip
+                    key={c.id}
+                    icon="card-outline"
+                    label={kind === 'income' ? `Estorno no ${c.name}` : c.name}
+                    selected={source === 'card' && cardId === c.id}
+                    onPress={() => {
+                      setValue('source', 'card');
+                      setValue('cardId', c.id);
+                    }}
+                  />
+                ))}
+              </View>
             </Field>
+          )}
+
+          {usesCard && card && kind === 'expense' && (
+            <Field label="Parcelas" error={errors.installments?.message}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ gap: space.sm }}
+              >
+                {INSTALLMENT_OPTIONS.map((n) => (
+                  <Chip
+                    key={n}
+                    label={n === 1 ? 'À vista' : `${n}x`}
+                    selected={installments === n}
+                    onPress={() => setValue('installments', n, { shouldValidate: true })}
+                  />
+                ))}
+              </ScrollView>
+            </Field>
+          )}
+
+          {usesCard && card && (
+            <InvoicePreview
+              closingDay={card.closingDay}
+              dueDay={card.dueDay}
+              date={occurredOn}
+              installments={kind === 'expense' ? installments : 1}
+              amountCents={amountCents}
+              refund={kind === 'income'}
+            />
           )}
 
           <Controller
@@ -499,6 +675,58 @@ export function TransactionForm({ editingId, initial = {} }: Props) {
   );
 }
 
+/** Mostra em qual fatura a compra cai (e até quando vão as parcelas). */
+function InvoicePreview({
+  closingDay,
+  dueDay,
+  date,
+  installments,
+  amountCents,
+  refund,
+}: {
+  closingDay: number;
+  dueDay: number;
+  date: string;
+  installments: number;
+  amountCents: number;
+  refund: boolean;
+}) {
+  const { colors } = useTheme();
+  const cycle = { closingDay, dueDay };
+  const first = invoiceMonthFor(date, cycle);
+  const due = invoiceDates(first, cycle).dueDate;
+  const lastMonth = shiftMonth(first, installments - 1);
+  const per =
+    installments > 1 && amountCents >= installments ? Math.floor(amountCents / installments) : null;
+  return (
+    <View
+      style={[styles.preview, { backgroundColor: colors.brandSoft }]}
+      accessibilityLiveRegion="polite"
+    >
+      <Ionicons name="calendar-outline" size={18} color={colors.brand} />
+      <View style={{ flex: 1, gap: 2 }}>
+        <Text variant="caption">
+          {refund
+            ? 'Abate a fatura de '
+            : installments > 1
+              ? '1ª parcela na fatura de '
+              : 'Entra na fatura de '}
+          <Text variant="caption" style={{ fontWeight: '700' }}>
+            {formatMonthLong(first).toLowerCase()}
+          </Text>
+          , que vence em {formatDateShort(due)}.
+        </Text>
+        {installments > 1 && (
+          <Text variant="caption" tone="muted">
+            {per !== null ? `${installments}x de cerca de ${formatBRL(per)}. ` : ''}Última parcela
+            na fatura de {formatMonthLong(lastMonth).toLowerCase()}.
+          </Text>
+        )}
+      </View>
+    </View>
+  );
+}
+
 function AccountChips({
   accounts,
   value,
@@ -539,4 +767,11 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth * 2,
   },
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
+  preview: {
+    flexDirection: 'row',
+    gap: space.sm,
+    padding: space.md,
+    borderRadius: radius.md,
+    alignItems: 'flex-start',
+  },
 });

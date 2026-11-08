@@ -100,6 +100,10 @@ function Navigation() {
         <Stack.Screen name="categorias/index" />
         <Stack.Screen name="categorias/nova" options={{ presentation: 'modal' }} />
         <Stack.Screen name="categorias/[id]" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="cartao/[id]" />
+        <Stack.Screen name="cartao/novo" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="cartao/editar/[id]" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="cartao/pagar/[id]" options={{ presentation: 'modal' }} />
         <Stack.Screen name="cambio" />
       </Stack>
     </ThemeProvider>

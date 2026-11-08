@@ -1,7 +1,8 @@
 # Finanças
 
 App pessoal para administrar a vida financeira: contas com saldo próprio, transferências,
-categorias e subcategorias, extrato por mês com filtros e câmbio.
+cartões de crédito (faturas, limite, compras parceladas), categorias e subcategorias,
+extrato por mês com filtros e câmbio.
 Os dados ficam no aparelho (SQLite) e funcionam sem internet. A sincronização com o Supabase
 entra numa fase própria (veja o roteiro abaixo).
 
@@ -40,6 +41,7 @@ src/
     transacao/            nova.tsx (?tipo=expense|income|transfer&conta=id) e [id].tsx (editar)
     conta/                [id] (detalhe com extrato), nova, editar/[id], ajustar/[id]
     categorias/           lista, nova (?tipo=&pai=), [id] (editar)
+    cartao/               [id] (faturas e limite), novo, editar/[id], pagar/[id] (?fatura=AAAA-MM)
     cambio.tsx            cotações e conversor
   components/ui/          design system: Text, Button, Money, MoneyInput, Segmented, Chip,
                           Surface, TextField, DatePickerSheet, ConfirmDialog, Toast, Screen…
@@ -52,6 +54,7 @@ src/
     transactions/         repositório, formulário (despesa/receita/transferência), extrato (TransactionFeed)
     accounts/             saldo por conta, criar/editar/arquivar, ajuste de saldo
     categories/           árvore de categorias e subcategorias, criar/editar/arquivar
+    cards/                cycle.ts (regras de fechamento/vencimento/parcelas), cartões, compras, faturas, pagamento
     catalog/              metadados locais (app_meta)
     home/                 cartão de saldo e gráfico mensal
     rates/                cotações (AwesomeAPI)
@@ -76,6 +79,16 @@ src/
 - **Subcategorias** herdam tipo, ícone e cor da categoria pai. Filtrar pela categoria pai inclui as subcategorias.
 - **Arquivar x excluir**: contas e categorias com movimentações só podem ser arquivadas (somem das
   listas de escolha, o histórico fica). Sempre sobra pelo menos uma conta ativa.
+- **Cartões de crédito**
+  - A fatura é identificada pelo mês de vencimento ("fatura de dezembro" vence em dezembro).
+  - Compras a partir do dia de fechamento entram na fatura seguinte (melhor dia de compra = fechamento).
+    Dia 31 em mês curto vira o último dia do mês.
+  - Compra parcelada vira uma linha por parcela, uma por fatura; a sobra de centavos vai na 1ª parcela.
+    Editar regrava as mesmas linhas (IDs `grupo-1`, `grupo-2`…); excluir apaga todas as parcelas.
+  - Compras no cartão contam como despesa do mês (na data de cada parcela) e não mexem no saldo das contas.
+  - Pagar a fatura tira da conta e abate a fatura; não conta como despesa (as compras já contaram).
+  - Limite usado = compras (inclusive parcelas futuras) − estornos − pagamentos.
+  - Situação da fatura: futura, aberta, fechada, paga ou vencida.
 - **Dados da versão 1**: na primeira abertura, a tabela antiga `transacoes` é convertida
   (valores para centavos, datas para ISO, tipo preservado) e renomeada para
   `legacy_transacoes_v1` como cópia de segurança. Transações com valor zero são ignoradas.
@@ -83,6 +96,8 @@ src/
 ## Observações
 
 - Na web as preferências (tema, ocultar valores) usam `localStorage`; no celular, o kv-store do expo-sqlite.
+- Na web, o expo-sqlite tem um tempo-limite curto para consultas síncronas e às vezes acusa
+  "Sync operation timeout" em recargas rápidas. No Android/iOS o acesso é direto e isso não acontece.
 
 ## Roteiro
 
@@ -90,7 +105,8 @@ src/
       telas atuais refeitas, bugs da v1 corrigidos, importação dos dados antigos
 - [x] **Fase 2**: contas (corrente, poupança, carteira…), saldo por conta, transferências,
       ajuste de saldo, gerenciar categorias e subcategorias, filtros por conta e categoria
-- [ ] **Fase 3**: cartões de crédito, faturas por ciclo, limite disponível, compras parceladas
+- [x] **Fase 3**: cartões de crédito, faturas por ciclo, limite disponível, compras parceladas,
+      estornos, pagamento total ou parcial da fatura
 - [ ] **Fase 4**: contas a pagar e a receber, recorrências, notificações de vencimento
 - [ ] **Fase 5**: dashboard novo, orçamentos por categoria, metas, backup/exportação, biometria
 - [ ] **Sync**: login e sincronização com o Supabase (fila local + `updated_at`, RLS por usuário)

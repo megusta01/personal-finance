@@ -52,7 +52,31 @@ export const categories = sqliteTable('categories', {
   ...syncColumns,
 });
 
-export const TRANSACTION_KINDS = ['income', 'expense', 'transfer'] as const;
+export const CARD_BRANDS = ['visa', 'mastercard', 'elo', 'amex', 'hipercard', 'other'] as const;
+export type CardBrand = (typeof CARD_BRANDS)[number];
+
+export const creditCards = sqliteTable('credit_cards', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  brand: text('brand', { enum: CARD_BRANDS }).notNull(),
+  /** Só os 4 últimos dígitos, para identificar. Nunca o número completo. */
+  lastDigits: text('last_digits'),
+  color: text('color').notNull(),
+  limitCents: integer('limit_cents').notNull(),
+  closingDay: integer('closing_day').notNull(),
+  dueDay: integer('due_day').notNull(),
+  /** Conta sugerida para pagar a fatura. */
+  paymentAccountId: text('payment_account_id'),
+  sortOrder: integer('sort_order').notNull().default(0),
+  archivedAt: text('archived_at'),
+  ...syncColumns,
+});
+
+/**
+ * income/expense: receitas e despesas (numa conta, ou num cartão quando card_id está preenchido);
+ * transfer: entre contas; card_payment: pagamento de fatura (sai da conta, abate a fatura do cartão).
+ */
+export const TRANSACTION_KINDS = ['income', 'expense', 'transfer', 'card_payment'] as const;
 export type TransactionKind = (typeof TRANSACTION_KINDS)[number];
 
 export const TRANSACTION_STATUSES = ['paid', 'pending'] as const;
@@ -64,7 +88,8 @@ export const transactions = sqliteTable('transactions', {
   /** Sempre positivo; o sinal vem de `kind`. */
   amountCents: integer('amount_cents').notNull(),
   description: text('description').notNull(),
-  accountId: text('account_id').notNull(),
+  /** Vazio só em compras/estornos no cartão. */
+  accountId: text('account_id'),
   /** Só em transferências: conta de destino. */
   toAccountId: text('to_account_id'),
   categoryId: text('category_id'),
@@ -76,12 +101,21 @@ export const transactions = sqliteTable('transactions', {
   origin: text('origin')
     .notNull()
     .default(sql`'app'`),
+  /** Cartão da compra/estorno, ou cartão cuja fatura foi paga. */
+  cardId: text('card_id'),
+  /** Fatura (mês de vencimento, "AAAA-MM") onde a compra cai ou que foi paga. */
+  invoiceMonth: text('invoice_month'),
+  /** Parcelas de uma mesma compra compartilham o grupo. */
+  installmentGroupId: text('installment_group_id'),
+  installmentNumber: integer('installment_number'),
+  installmentCount: integer('installment_count'),
   ...syncColumns,
 });
 
 export type Account = typeof accounts.$inferSelect;
+export type CreditCard = typeof creditCards.$inferSelect;
 export type Category = typeof categories.$inferSelect;
 export type Transaction = typeof transactions.$inferSelect;
 export type NewTransaction = typeof transactions.$inferInsert;
 
-export const schema = { accounts, categories, transactions };
+export const schema = { accounts, categories, transactions, creditCards };

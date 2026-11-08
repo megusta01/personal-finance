@@ -4,6 +4,7 @@ import { View } from 'react-native';
 import {
   Button,
   Divider,
+  EmptyState,
   IconButton,
   ListRow,
   Money,
@@ -20,6 +21,10 @@ import {
   listAccountsWithBalance,
   type AccountWithBalance,
 } from '@/features/accounts/repository';
+import { CardVisual } from '@/features/cards/CardVisual';
+import { STATUS_META } from '@/features/cards/meta';
+import { listCards, listCardsOverview, type CardOverview } from '@/features/cards/repository';
+import { formatDateShort, formatMonthShort } from '@/lib/dates';
 import { useTheme } from '@/theme/ThemeProvider';
 import { space } from '@/theme/tokens';
 
@@ -30,9 +35,12 @@ export default function Contas() {
     (db) => ({
       active: listAccountsWithBalance(db),
       archived: listAccountsWithBalance(db, { archived: true }),
+      cards: listCardsOverview(db),
+      archivedCards: listCards(db, { archived: true }),
     }),
-    ACCOUNT_TABLES,
+    [...ACCOUNT_TABLES, 'credit_cards'],
   );
+  const cards = data?.cards ?? [];
   const active = data?.active ?? [];
   const archived = data?.archived ?? [];
   const total = active.filter((a) => a.includeInTotal).reduce((s, a) => s + a.balanceCents, 0);
@@ -40,7 +48,7 @@ export default function Contas() {
 
   return (
     <Screen
-      title="Contas"
+      title="Contas e cartões"
       right={
         <IconButton
           icon="add"
@@ -95,9 +103,58 @@ export default function Contas() {
         </Text>
       )}
 
+      <SectionHeader
+        title="Cartões de crédito"
+        action={
+          <IconButton
+            icon="add"
+            label="Novo cartão"
+            size={20}
+            color={colors.brand}
+            onPress={() => router.push('/cartao/novo')}
+          />
+        }
+      />
+      {cards.length > 0 ? (
+        <Surface>
+          {cards.map((c, i) => (
+            <View key={c.id}>
+              {i > 0 && <Divider inset={68} />}
+              <CardRow card={c} />
+            </View>
+          ))}
+        </Surface>
+      ) : (
+        <Surface>
+          <EmptyState
+            icon="card-outline"
+            title="Nenhum cartão ainda"
+            message="Cadastre seus cartões para acompanhar faturas, limite e compras parceladas."
+            actionLabel="Cadastrar cartão"
+            onAction={() => router.push('/cartao/novo')}
+          />
+        </Surface>
+      )}
+      {(data?.archivedCards.length ?? 0) > 0 && (
+        <Surface>
+          {data!.archivedCards.map((c, i) => (
+            <View key={c.id}>
+              {i > 0 && <Divider inset={68} />}
+              <ListRow
+                title={c.name}
+                subtitle="Cartão arquivado"
+                tone="muted"
+                left={<CardVisual compact name={c.name} brand={c.brand} color={c.color} />}
+                onPress={() => router.push(`/cartao/${c.id}`)}
+              />
+            </View>
+          ))}
+        </Surface>
+      )}
+
       {archived.length > 0 && (
         <>
-          <SectionHeader title="Arquivadas" />
+          <SectionHeader title="Contas arquivadas" />
           <Surface>
             <ListRow
               title={
@@ -144,6 +201,37 @@ function AccountRow({ account: a }: { account: AccountWithBalance }) {
         />
       }
       onPress={() => router.push(`/conta/${a.id}`)}
+      chevron={false}
+    />
+  );
+}
+
+function CardRow({ card: c }: { card: CardOverview }) {
+  const inv = c.current;
+  const status = STATUS_META[inv.status];
+  const amount = inv.paidCents > 0 && inv.status !== 'paid' ? inv.remainingCents : inv.totalCents;
+  const subtitle =
+    inv.status === 'empty'
+      ? `Fatura de ${formatMonthShort(inv.month)} sem lançamentos`
+      : `Fatura de ${formatMonthShort(inv.month)}: ${status.label.toLowerCase()}, vence ${formatDateShort(inv.dates.dueDate).slice(0, 5)}`;
+  return (
+    <ListRow
+      title={c.name}
+      subtitle={subtitle}
+      left={<CardVisual compact name={c.name} brand={c.brand} color={c.color} />}
+      right={
+        <View style={{ alignItems: 'flex-end' }}>
+          <Money
+            cents={amount}
+            variant="bodyStrong"
+            tone={inv.status === 'overdue' ? 'expense' : 'default'}
+          />
+          <Text variant="micro" tone="subtle">
+            disp. <Money cents={c.availableCents} variant="micro" tone="subtle" />
+          </Text>
+        </View>
+      }
+      onPress={() => router.push(`/cartao/${c.id}`)}
       chevron={false}
     />
   );

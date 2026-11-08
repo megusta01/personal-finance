@@ -126,4 +126,49 @@ describe('migrate', () => {
       .get();
     expect(sub).toMatchObject({ parent_id: 'cat-exp-food', color: '#E07A3F' });
   });
+
+  it('atualiza um banco da versão 2 (com transferência e subcategoria) para a 3', async () => {
+    const raw = openTestDb();
+    const db = adapter(raw);
+    await MIGRATIONS[0]!.up(db);
+    await MIGRATIONS[1]!.up(db);
+    raw.exec('PRAGMA user_version = 2');
+    raw.exec(`INSERT INTO accounts (id, name, type, color, icon, created_at, updated_at)
+              VALUES ('nu', 'Nubank', 'checking', '#000', 'card', 'x', 'x')`);
+    raw.exec(`INSERT INTO transactions (id, kind, amount_cents, description, account_id, to_account_id, occurred_on, created_at, updated_at)
+              VALUES ('tr', 'transfer', 500, 'Saque', 'nu', 'acc-default-wallet', '2026-11-07', 'x', 'x')`);
+    raw.exec(`INSERT INTO transactions (id, kind, amount_cents, description, account_id, category_id, occurred_on, notes, created_at, updated_at, deleted_at)
+              VALUES ('ex', 'expense', 6790, 'Pizza', 'nu', 'sub-food-delivery', '2026-11-07', 'obs', 'x', 'y', 'z')`);
+
+    expect(await migrate(db)).toEqual({ from: 2, to: LATEST_VERSION });
+
+    const rows = raw.prepare('SELECT * FROM transactions ORDER BY id').all() as Record<
+      string,
+      unknown
+    >[];
+    expect(rows).toEqual([
+      expect.objectContaining({
+        id: 'ex',
+        kind: 'expense',
+        amount_cents: 6790,
+        category_id: 'sub-food-delivery',
+        notes: 'obs',
+        deleted_at: 'z',
+        card_id: null,
+      }),
+      expect.objectContaining({
+        id: 'tr',
+        kind: 'transfer',
+        to_account_id: 'acc-default-wallet',
+        invoice_month: null,
+      }),
+    ]);
+    const indexes = raw
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'transactions'")
+      .all() as { name: string }[];
+    expect(indexes.map((i) => i.name)).toEqual(
+      expect.arrayContaining(['idx_transactions_occurred_on', 'idx_transactions_invoice']),
+    );
+    expect(raw.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+  });
 });

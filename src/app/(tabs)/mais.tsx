@@ -35,8 +35,8 @@ export default function Mais() {
         />
         <Divider inset={56} />
         <ListRow
-          title="Contas"
-          subtitle="Contas, saldos e transferências"
+          title="Contas e cartões"
+          subtitle="Saldos, transferências, faturas e limites"
           left={<Ionicons name="wallet-outline" size={22} color={colors.brand} />}
           onPress={() => router.push('/contas')}
         />

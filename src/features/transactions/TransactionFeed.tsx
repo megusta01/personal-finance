@@ -18,6 +18,8 @@ import {
 import { useDbQuery } from '@/db/client';
 import { AccountIcon } from '@/features/accounts/AccountIcon';
 import { listActiveAccounts } from '@/features/accounts/repository';
+import { CardVisual } from '@/features/cards/CardVisual';
+import { listCards } from '@/features/cards/repository';
 import { listCategoryTree } from '@/features/categories/repository';
 import { formatDayHeading, formatMonthLong, monthKey, shiftMonth } from '@/lib/dates';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -56,31 +58,50 @@ export function TransactionFeed({ header, fixedAccountId }: Props) {
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [sheet, setSheet] = useState<'account' | 'category' | null>(null);
 
-  const accountId = fixedAccountId ?? accountFilter;
+  // O filtro "conta" também aceita cartões (valor "card:<id>").
+  const filterCardId = accountFilter?.startsWith('card:') ? accountFilter.slice(5) : null;
+  const accountId = fixedAccountId ?? (filterCardId ? null : accountFilter);
   const { data } = useDbQuery(
     (db) => ({
-      rows: listByMonth(db, { month, kind, search, accountId, categoryId: categoryFilter }),
-      totals: monthTotals(db, month, accountId),
+      rows: listByMonth(db, {
+        month,
+        kind,
+        search,
+        accountId,
+        categoryId: categoryFilter,
+        cardId: filterCardId,
+      }),
+      totals: monthTotals(db, month, accountId, filterCardId),
       accounts: listActiveAccounts(db),
+      cards: listCards(db),
       expenseTree: listCategoryTree(db, 'expense'),
       incomeTree: listCategoryTree(db, 'income'),
     }),
     TX_TABLES,
-    [month, kind, search, accountId, categoryFilter],
+    [month, kind, search, accountId, categoryFilter, filterCardId],
   );
 
-  const sections = useMemo(() => groupByDay(data?.rows ?? [], accountId), [data?.rows, accountId]);
+  const sections = useMemo(
+    () => groupByDay(data?.rows ?? [], accountId, filterCardId),
+    [data?.rows, accountId, filterCardId],
+  );
   const totals = data?.totals ?? { incomeCents: 0, expenseCents: 0 };
   const result = totals.incomeCents - totals.expenseCents;
   const filtering =
     kind !== 'all' || search.trim().length > 0 || !!accountFilter || !!categoryFilter;
 
   const accountOptions: SheetOption<string>[] = [
-    { value: ALL, label: 'Todas as contas' },
+    { value: ALL, label: 'Todas as contas e cartões' },
     ...(data?.accounts ?? []).map((a) => ({
       value: a.id,
       label: a.name,
       icon: <AccountIcon icon={a.icon} color={a.color} size={32} />,
+    })),
+    ...(data?.cards ?? []).map((c) => ({
+      value: `card:${c.id}`,
+      label: c.name,
+      description: 'Cartão de crédito',
+      icon: <CardVisual compact name={c.name} brand={c.brand} color={c.color} />,
     })),
   ];
   const categoryOptions: SheetOption<string>[] = [{ value: ALL, label: 'Todas as categorias' }];
@@ -99,7 +120,7 @@ export function TransactionFeed({ header, fixedAccountId }: Props) {
         categoryOptions.push({ value: s.id, label: s.name, indent: true });
     }
   }
-  const accountName = data?.accounts.find((a) => a.id === accountFilter)?.name;
+  const accountName = accountOptions.find((o) => o.value === accountFilter)?.label;
   const categoryName = categoryOptions.find((o) => o.value === categoryFilter)?.label;
 
   const clearFilters = () => {
@@ -183,7 +204,7 @@ export function TransactionFeed({ header, fixedAccountId }: Props) {
         {!fixedAccountId && (
           <FilterPill
             icon="wallet-outline"
-            label={accountName ?? 'Todas as contas'}
+            label={accountName ?? 'Todas as contas e cartões'}
             active={!!accountFilter}
             onPress={() => setSheet('account')}
           />
@@ -232,6 +253,7 @@ export function TransactionFeed({ header, fixedAccountId }: Props) {
             <TransactionItem
               item={item}
               accountId={accountId}
+              cardId={filterCardId}
               onPress={(id) => router.push(`/transacao/${id}`)}
             />
           </View>
@@ -264,7 +286,7 @@ export function TransactionFeed({ header, fixedAccountId }: Props) {
       />
       <OptionSheet
         visible={sheet === 'account'}
-        title="Filtrar por conta"
+        title="Filtrar por conta ou cartão"
         options={accountOptions}
         value={accountFilter ?? ALL}
         onSelect={(v) => setAccountFilter(v === ALL ? null : v)}
@@ -284,7 +306,11 @@ export function TransactionFeed({ header, fixedAccountId }: Props) {
 
 type DaySection = { date: string; net: number; data: TransactionRow[] };
 
-function groupByDay(rows: TransactionRow[], accountId: string | null | undefined): DaySection[] {
+function groupByDay(
+  rows: TransactionRow[],
+  accountId: string | null | undefined,
+  cardId: string | null,
+): DaySection[] {
   const out: DaySection[] = [];
   for (const r of rows) {
     let s = out[out.length - 1];
@@ -293,7 +319,7 @@ function groupByDay(rows: TransactionRow[], accountId: string | null | undefined
       out.push(s);
     }
     s.data.push(r);
-    s.net += signedAmount(r, accountId);
+    s.net += signedAmount(r, accountId, cardId);
   }
   return out;
 }

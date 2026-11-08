@@ -226,6 +226,86 @@ export const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    version: 3,
+    name: 'cartões de crédito, compras parceladas e pagamento de fatura',
+    up: async (db) => {
+      // O SQLite não altera CHECK nem NOT NULL de colunas existentes, então a tabela
+      // de transações é recriada (procedimento oficial: criar nova, copiar, trocar).
+      // Nenhuma tabela aponta para `transactions`, então a troca é segura.
+      await db.execAsync(`
+        CREATE TABLE credit_cards (
+          id                  TEXT PRIMARY KEY NOT NULL,
+          name                TEXT NOT NULL,
+          brand               TEXT NOT NULL CHECK (brand IN ('visa','mastercard','elo','amex','hipercard','other')),
+          last_digits         TEXT CHECK (last_digits IS NULL OR last_digits GLOB '[0-9][0-9][0-9][0-9]'),
+          color               TEXT NOT NULL,
+          limit_cents         INTEGER NOT NULL CHECK (limit_cents >= 0),
+          closing_day         INTEGER NOT NULL CHECK (closing_day BETWEEN 1 AND 31),
+          due_day             INTEGER NOT NULL CHECK (due_day BETWEEN 1 AND 31),
+          payment_account_id  TEXT REFERENCES accounts(id),
+          sort_order          INTEGER NOT NULL DEFAULT 0,
+          archived_at         TEXT,
+          created_at          TEXT NOT NULL,
+          updated_at          TEXT NOT NULL,
+          deleted_at          TEXT
+        );
+        CREATE INDEX idx_credit_cards_updated_at ON credit_cards (updated_at);
+
+        CREATE TABLE transactions_v3 (
+          id                    TEXT PRIMARY KEY NOT NULL,
+          kind                  TEXT NOT NULL CHECK (kind IN ('income','expense','transfer','card_payment')),
+          amount_cents          INTEGER NOT NULL CHECK (amount_cents > 0),
+          description           TEXT NOT NULL,
+          account_id            TEXT REFERENCES accounts(id),
+          to_account_id         TEXT REFERENCES accounts(id),
+          category_id           TEXT REFERENCES categories(id),
+          occurred_on           TEXT NOT NULL CHECK (occurred_on GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
+          status                TEXT NOT NULL DEFAULT 'paid' CHECK (status IN ('paid','pending')),
+          notes                 TEXT,
+          origin                TEXT NOT NULL DEFAULT 'app',
+          card_id               TEXT REFERENCES credit_cards(id),
+          invoice_month         TEXT CHECK (invoice_month IS NULL OR invoice_month GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]'),
+          installment_group_id  TEXT,
+          installment_number    INTEGER,
+          installment_count     INTEGER,
+          created_at            TEXT NOT NULL,
+          updated_at            TEXT NOT NULL,
+          deleted_at            TEXT,
+          -- transferência tem destino; o resto não
+          CHECK ((kind = 'transfer') = (to_account_id IS NOT NULL)),
+          -- tudo sai de uma conta, menos compra/estorno no cartão
+          CHECK (account_id IS NOT NULL OR (card_id IS NOT NULL AND kind IN ('income','expense'))),
+          -- só lançamentos de cartão têm fatura, e todos eles têm
+          CHECK ((card_id IS NULL) = (invoice_month IS NULL)),
+          CHECK (kind <> 'card_payment' OR (card_id IS NOT NULL AND account_id IS NOT NULL)),
+          CHECK (kind NOT IN ('transfer','card_payment') OR category_id IS NULL),
+          CHECK (card_id IS NULL OR kind = 'card_payment' OR account_id IS NULL),
+          CHECK ((installment_group_id IS NULL) = (installment_number IS NULL)
+             AND (installment_number IS NULL) = (installment_count IS NULL)),
+          CHECK (installment_number IS NULL OR (installment_number BETWEEN 1 AND installment_count))
+        );
+
+        INSERT INTO transactions_v3
+          (id, kind, amount_cents, description, account_id, to_account_id, category_id, occurred_on,
+           status, notes, origin, created_at, updated_at, deleted_at)
+        SELECT id, kind, amount_cents, description, account_id, to_account_id, category_id, occurred_on,
+               status, notes, origin, created_at, updated_at, deleted_at
+          FROM transactions;
+
+        DROP TABLE transactions;
+        ALTER TABLE transactions_v3 RENAME TO transactions;
+
+        CREATE INDEX idx_transactions_occurred_on ON transactions (occurred_on);
+        CREATE INDEX idx_transactions_account     ON transactions (account_id);
+        CREATE INDEX idx_transactions_to_account  ON transactions (to_account_id);
+        CREATE INDEX idx_transactions_category    ON transactions (category_id);
+        CREATE INDEX idx_transactions_updated_at  ON transactions (updated_at);
+        CREATE INDEX idx_transactions_invoice     ON transactions (card_id, invoice_month);
+        CREATE INDEX idx_transactions_installment ON transactions (installment_group_id);
+      `);
+    },
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1]!.version;
