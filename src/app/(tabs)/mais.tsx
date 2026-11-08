@@ -1,19 +1,47 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
+import { useState } from 'react';
 import { StyleSheet, Switch, View } from 'react-native';
-import { Divider, ListRow, Screen, SectionHeader, Segmented, Surface, Text } from '@/components/ui';
+import {
+  Chip,
+  Divider,
+  ListRow,
+  Screen,
+  SectionHeader,
+  Segmented,
+  Surface,
+  Text,
+} from '@/components/ui';
 import { useDbQuery } from '@/db/client';
 import { getMeta } from '@/features/catalog/meta';
 import { countTransactions } from '@/features/transactions/repository';
 import { formatDateShort } from '@/lib/dates';
-import { setHideValues, setThemePref, usePrefs, type ThemePref } from '@/lib/prefs';
+import { requestPermission, remindersSupported } from '@/features/reminders/notifications';
+import {
+  setHideValues,
+  setReminderPrefs,
+  setThemePref,
+  usePrefs,
+  type ThemePref,
+} from '@/lib/prefs';
 import { useTheme } from '@/theme/ThemeProvider';
 import { space } from '@/theme/tokens';
 
 export default function Mais() {
   const { colors } = useTheme();
   const prefs = usePrefs();
+  const [permissionDenied, setPermissionDenied] = useState(false);
+
+  const toggleReminders = async (on: boolean) => {
+    if (!on) {
+      setReminderPrefs({ remindersEnabled: false });
+      return;
+    }
+    const granted = await requestPermission();
+    setPermissionDenied(!granted);
+    setReminderPrefs({ remindersEnabled: granted });
+  };
   const { data } = useDbQuery(
     (db) => ({
       count: countTransactions(db),
@@ -47,6 +75,94 @@ export default function Mais() {
           left={<Ionicons name="globe-outline" size={22} color={colors.brand} />}
           onPress={() => router.push('/cambio')}
         />
+      </Surface>
+
+      <SectionHeader title="Contas do mês" />
+      <Surface>
+        <ListRow
+          title="A pagar e a receber"
+          subtitle="Vencimentos, contas atrasadas e o que falta receber"
+          left={<Ionicons name="calendar-outline" size={22} color={colors.brand} />}
+          onPress={() => router.push('/pagamentos')}
+        />
+        <Divider inset={56} />
+        <ListRow
+          title="Recorrências"
+          subtitle="Aluguel, luz, assinaturas, salário…"
+          left={<Ionicons name="repeat" size={22} color={colors.brand} />}
+          onPress={() => router.push('/recorrencias')}
+        />
+      </Surface>
+
+      <SectionHeader title="Lembretes" />
+      <Surface style={{ padding: space.lg, gap: space.lg }}>
+        {remindersSupported ? (
+          <>
+            <View style={styles.row}>
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text variant="bodyStrong">Avisar vencimentos</Text>
+                <Text variant="caption" tone="muted">
+                  Notificação no celular para contas a pagar, recebimentos e faturas de cartão.
+                </Text>
+              </View>
+              <Switch
+                value={prefs.remindersEnabled}
+                onValueChange={toggleReminders}
+                accessibilityLabel="Avisar vencimentos"
+                trackColor={{ true: colors.brand, false: colors.border }}
+                thumbColor={colors.surface}
+              />
+            </View>
+            {permissionDenied && (
+              <Text variant="caption" tone="danger">
+                As notificações estão bloqueadas para o app. Libere nas configurações do celular e
+                ligue de novo.
+              </Text>
+            )}
+            {prefs.remindersEnabled && (
+              <>
+                <Divider />
+                <View style={{ gap: space.sm }}>
+                  <Text variant="caption" tone="muted">
+                    Horário do aviso
+                  </Text>
+                  <View style={styles.chips}>
+                    {[7, 9, 12, 18, 20].map((h) => (
+                      <Chip
+                        key={h}
+                        label={`${h}h`}
+                        selected={prefs.reminderHour === h}
+                        onPress={() => setReminderPrefs({ reminderHour: h })}
+                      />
+                    ))}
+                  </View>
+                </View>
+                <View style={{ gap: space.sm }}>
+                  <Text variant="caption" tone="muted">
+                    Avisar também antes
+                  </Text>
+                  <View style={styles.chips}>
+                    {[0, 1, 2, 3, 5, 7].map((d) => (
+                      <Chip
+                        key={d}
+                        label={d === 0 ? 'Só no dia' : d === 1 ? '1 dia antes' : `${d} dias antes`}
+                        selected={prefs.reminderDaysBefore === d}
+                        onPress={() => setReminderPrefs({ reminderDaysBefore: d })}
+                      />
+                    ))}
+                  </View>
+                </View>
+                <Text variant="caption" tone="subtle">
+                  Com “Ocultar valores” ligado, os avisos não mostram valores na tela bloqueada.
+                </Text>
+              </>
+            )}
+          </>
+        ) : (
+          <Text variant="caption" tone="muted">
+            Lembretes funcionam no app de celular (Android e iPhone).
+          </Text>
+        )}
       </Surface>
 
       <SectionHeader title="Aparência" />
@@ -146,4 +262,5 @@ function InfoRow({
 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: space.lg },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
 });

@@ -1,7 +1,16 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, type Href } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { Divider, EmptyState, Money, Screen, SectionHeader, Surface, Text } from '@/components/ui';
+import {
+  Divider,
+  EmptyState,
+  ListRow,
+  Money,
+  Screen,
+  SectionHeader,
+  Surface,
+  Text,
+} from '@/components/ui';
 import { useDbQuery } from '@/db/client';
 import { BalanceCard } from '@/features/home/BalanceCard';
 import { MonthlyChart } from '@/features/home/MonthlyChart';
@@ -13,12 +22,22 @@ import {
   monthlySeries,
   monthTotals,
   totalBalance,
+  listPending,
   TX_TABLES,
 } from '@/features/transactions/repository';
+import { BillRow } from '@/features/bills/BillRow';
+import { projectedBalance } from '@/features/bills/repository';
 import { CardVisual } from '@/features/cards/CardVisual';
 import { STATUS_META } from '@/features/cards/meta';
 import { listCardsOverview } from '@/features/cards/repository';
-import { formatDateShort, formatDayHeading, greeting, monthKey, todayISO } from '@/lib/dates';
+import {
+  daysAgoISO,
+  formatDateShort,
+  formatDayHeading,
+  greeting,
+  monthKey,
+  todayISO,
+} from '@/lib/dates';
 import { useTheme } from '@/theme/ThemeProvider';
 import { radius, space } from '@/theme/tokens';
 
@@ -34,6 +53,7 @@ function SeeAll({ label, href }: { label: string; href: Href }) {
 
 export default function Home() {
   const { colors } = useTheme();
+  const week = daysAgoISO(-7);
   const month = monthKey(new Date());
   const { data } = useDbQuery(
     (db) => ({
@@ -43,9 +63,13 @@ export default function Home() {
       recent: listRecent(db, 5),
       accounts: listAccountsWithBalance(db),
       cards: listCardsOverview(db),
+      projected: projectedBalance(db),
+      upcoming: [...listPending(db, 'expense', week), ...listPending(db, 'income', week)].sort(
+        (a, b) => (a.dueOn ?? a.occurredOn).localeCompare(b.dueOn ?? b.occurredOn),
+      ),
     }),
-    TX_TABLES,
-    [month],
+    [...TX_TABLES, 'recurrences'],
+    [month, week],
   );
 
   const today = formatDayHeading(todayISO(), { relative: false });
@@ -64,6 +88,7 @@ export default function Home() {
         incomeCents={data?.totals.incomeCents ?? 0}
         expenseCents={data?.totals.expenseCents ?? 0}
         month={month}
+        projectedCents={data?.projected}
       />
 
       <QuickActions />
@@ -149,6 +174,33 @@ export default function Home() {
             })}
             <View style={{ width: space.lg - space.md }} />
           </ScrollView>
+        </>
+      )}
+
+      {(data?.upcoming.length ?? 0) > 0 && (
+        <>
+          <SectionHeader
+            title="Próximos vencimentos"
+            action={<SeeAll label="Ver todos" href="/pagamentos" />}
+          />
+          <Surface>
+            {data!.upcoming.slice(0, 4).map((t, i) => (
+              <View key={t.id}>
+                {i > 0 && <Divider inset={68} />}
+                <BillRow item={t} overdue={(t.dueOn ?? t.occurredOn) < todayISO()} />
+              </View>
+            ))}
+            {data!.upcoming.length > 4 && (
+              <>
+                <Divider />
+                <ListRow
+                  title={`Mais ${data!.upcoming.length - 4} nos próximos 7 dias`}
+                  tone="muted"
+                  onPress={() => router.push('/pagamentos')}
+                />
+              </>
+            )}
+          </Surface>
         </>
       )}
 

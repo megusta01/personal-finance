@@ -18,6 +18,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ToastProvider } from '@/components/ui';
 import { DATABASE_NAME, DbProvider } from '@/db/client';
 import { migrate } from '@/db/migrations';
+import { BackgroundJobs } from '@/features/reminders/BackgroundJobs';
 import { AppThemeProvider, useTheme } from '@/theme/ThemeProvider';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -52,6 +53,7 @@ export default function RootLayout() {
               useSuspense
             >
               <DbProvider>
+                <BackgroundJobs />
                 <ToastProvider>
                   <Navigation />
                 </ToastProvider>
@@ -104,6 +106,10 @@ function Navigation() {
         <Stack.Screen name="cartao/novo" options={{ presentation: 'modal' }} />
         <Stack.Screen name="cartao/editar/[id]" options={{ presentation: 'modal' }} />
         <Stack.Screen name="cartao/pagar/[id]" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="pagamentos/index" />
+        <Stack.Screen name="pagamentos/pagar/[id]" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="recorrencias" />
+        <Stack.Screen name="recorrencia/[id]" options={{ presentation: 'modal' }} />
         <Stack.Screen name="cambio" />
       </Stack>
     </ThemeProvider>

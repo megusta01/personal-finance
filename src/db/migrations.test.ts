@@ -171,4 +171,31 @@ describe('migrate', () => {
     );
     expect(raw.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
   });
+
+  it('atualiza um banco da versão 3 (com compra parcelada) para a 4', async () => {
+    const raw = openTestDb();
+    const db = adapter(raw);
+    for (const m of MIGRATIONS.slice(0, 3)) await m.up(db);
+    raw.exec('PRAGMA user_version = 3');
+    raw.exec(`INSERT INTO credit_cards (id, name, brand, color, limit_cents, closing_day, due_day, created_at, updated_at)
+              VALUES ('c1', 'Nu', 'visa', '#000', 100000, 3, 10, 'x', 'x')`);
+    raw.exec(`INSERT INTO transactions (id, kind, amount_cents, description, category_id, occurred_on, card_id, invoice_month,
+                installment_group_id, installment_number, installment_count, created_at, updated_at)
+              VALUES ('g-1', 'expense', 5000, 'Fone', 'cat-exp-shopping', '2026-11-08', 'c1', '2026-12', 'g', 1, 2, 'x', 'x')`);
+
+    expect(await migrate(db)).toEqual({ from: 3, to: LATEST_VERSION });
+    expect(
+      raw
+        .prepare(
+          "SELECT installment_number, due_on, recurrence_id FROM transactions WHERE id = 'g-1'",
+        )
+        .get(),
+    ).toEqual({
+      installment_number: 1,
+      due_on: null,
+      recurrence_id: null,
+    });
+    expect(raw.prepare('SELECT count(*) AS n FROM recurrences').get()).toEqual({ n: 0 });
+    expect(raw.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+  });
 });

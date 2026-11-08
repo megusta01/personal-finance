@@ -109,13 +109,45 @@ export const transactions = sqliteTable('transactions', {
   installmentGroupId: text('installment_group_id'),
   installmentNumber: integer('installment_number'),
   installmentCount: integer('installment_count'),
+  /** Vencimento (contas a pagar/receber). Continua guardado depois de pago. */
+  dueOn: text('due_on'),
+  /** Recorrência que gerou este lançamento. */
+  recurrenceId: text('recurrence_id'),
+  ...syncColumns,
+});
+
+export const FREQUENCIES = ['weekly', 'monthly', 'yearly'] as const;
+
+export const recurrences = sqliteTable('recurrences', {
+  id: text('id').primaryKey(),
+  kind: text('kind', { enum: ['income', 'expense'] }).notNull(),
+  amountCents: integer('amount_cents').notNull(),
+  /** Valor muda todo mês (luz, água): o app pede o valor na hora de pagar. */
+  variableAmount: integer('variable_amount', { mode: 'boolean' }).notNull().default(false),
+  description: text('description').notNull(),
+  categoryId: text('category_id'),
+  /** Exatamente um dos dois: conta ou cartão (assinatura no cartão). */
+  accountId: text('account_id'),
+  cardId: text('card_id'),
+  frequency: text('frequency', { enum: FREQUENCIES }).notNull(),
+  interval: integer('interval_n').notNull().default(1),
+  startOn: text('start_on').notNull(),
+  endOn: text('end_on'),
+  maxCount: integer('max_count'),
+  /** Débito automático: vira "pago" sozinho no dia. */
+  autoPay: integer('auto_pay', { mode: 'boolean' }).notNull().default(false),
+  notes: text('notes'),
+  pausedAt: text('paused_at'),
+  /** Até que data as ocorrências já foram criadas. */
+  generatedUntil: text('generated_until'),
   ...syncColumns,
 });
 
 export type Account = typeof accounts.$inferSelect;
+export type Recurrence = typeof recurrences.$inferSelect;
 export type CreditCard = typeof creditCards.$inferSelect;
 export type Category = typeof categories.$inferSelect;
 export type Transaction = typeof transactions.$inferSelect;
 export type NewTransaction = typeof transactions.$inferInsert;
 
-export const schema = { accounts, categories, transactions, creditCards };
+export const schema = { accounts, categories, transactions, creditCards, recurrences };

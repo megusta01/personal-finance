@@ -281,6 +281,8 @@ export type CardPurchase = {
   categoryId: string | null;
   purchasedOn: ISODate;
   notes: string | null;
+  /** Assinatura no cartão gerada por recorrência. */
+  recurrenceId: string | null;
 };
 
 /** Junta as parcelas de volta numa compra só (para editar). */
@@ -299,6 +301,7 @@ export function getCardPurchase(db: AppDb, txId: string): CardPurchase | undefin
     categoryId: first.categoryId,
     purchasedOn: first.occurredOn,
     notes: first.notes,
+    recurrenceId: first.recurrenceId,
   };
 }
 

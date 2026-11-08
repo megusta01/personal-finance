@@ -1,4 +1,17 @@
-import { and, desc, eq, gte, inArray, isNull, like, lte, or, sql, type SQL } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gte,
+  inArray,
+  isNull,
+  like,
+  lte,
+  or,
+  sql,
+  type SQL,
+} from 'drizzle-orm';
 import { alias } from 'drizzle-orm/sqlite-core';
 import { randomUUID } from 'expo-crypto';
 import type { AppDb } from '@/db/client';
@@ -12,6 +25,10 @@ export { totalBalance } from '@/features/accounts/repository';
 export const TX_TABLES = ['transactions', 'categories', 'accounts', 'credit_cards'];
 
 type Common = {
+  /** pending = a pagar/receber (não entra no saldo até ser pago). Padrão: paid. */
+  status?: 'paid' | 'pending';
+  /** Vencimento. Para "a pagar" é a própria data; mantido depois de pago. */
+  dueOn?: string | null;
   amountCents: number;
   description: string;
   accountId: string;
@@ -54,6 +71,8 @@ function listSelect(db: AppDb) {
       installmentGroupId: transactions.installmentGroupId,
       installmentNumber: transactions.installmentNumber,
       installmentCount: transactions.installmentCount,
+      dueOn: transactions.dueOn,
+      recurrenceId: transactions.recurrenceId,
     })
     .from(transactions)
     .leftJoin(categories, eq(categories.id, transactions.categoryId))
@@ -121,6 +140,25 @@ export function listInvoiceItems(
   return listSelect(db)
     .where(and(alive, eq(transactions.cardId, cardId), eq(transactions.invoiceMonth, invoiceMonth)))
     .orderBy(desc(transactions.occurredOn), desc(transactions.createdAt))
+    .all();
+}
+
+/** Contas a pagar (expense) ou a receber (income) em aberto, com vencimento até `until`. */
+export function listPending(
+  db: AppDb,
+  kind: 'income' | 'expense',
+  until: ISODate,
+): TransactionRow[] {
+  return listSelect(db)
+    .where(
+      and(
+        alive,
+        eq(transactions.status, 'pending'),
+        eq(transactions.kind, kind),
+        lte(transactions.dueOn, until),
+      ),
+    )
+    .orderBy(asc(transactions.dueOn), asc(transactions.description))
     .all();
 }
 
@@ -274,19 +312,24 @@ function clean(input: TransactionInput) {
     notes: input.notes?.trim() || null,
   };
   if (input.kind === 'transfer') {
+    // Transferência agendada não existe por enquanto: sempre efetivada.
+    const done = { status: 'paid' as const, dueOn: null };
     if (!input.toAccountId || input.toAccountId === input.accountId) {
       throw new Error('Escolha contas diferentes para a origem e o destino.');
     }
-    return { ...base, toAccountId: input.toAccountId, categoryId: null, ...NO_CARD };
+    return { ...base, ...done, toAccountId: input.toAccountId, categoryId: null, ...NO_CARD };
   }
-  return { ...base, toAccountId: null, categoryId: input.categoryId, ...NO_CARD };
+  const status = input.status ?? 'paid';
+  // A pagar/receber: o vencimento é a própria data do lançamento.
+  const dueOn = status === 'pending' ? input.occurredOn : (input.dueOn ?? null);
+  return { ...base, status, dueOn, toAccountId: null, categoryId: input.categoryId, ...NO_CARD };
 }
 
 export function createTransaction(db: AppDb, input: TransactionInput): string {
   const id = randomUUID();
   const now = nowTimestamp();
   db.insert(transactions)
-    .values({ id, ...clean(input), status: 'paid', origin: 'app', createdAt: now, updatedAt: now })
+    .values({ id, ...clean(input), origin: 'app', createdAt: now, updatedAt: now })
     .run();
   return id;
 }

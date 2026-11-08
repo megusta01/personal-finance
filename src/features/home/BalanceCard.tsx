@@ -11,10 +11,18 @@ type Props = {
   incomeCents: number;
   expenseCents: number;
   month: MonthKey;
+  /** Saldo previsto para o fim do mês (só aparece se for diferente do atual). */
+  projectedCents?: number;
 };
 
 /** A peça de destaque do app: saldo em verde-petróleo com um fio de latão. */
-export function BalanceCard({ balanceCents, incomeCents, expenseCents, month }: Props) {
+export function BalanceCard({
+  balanceCents,
+  incomeCents,
+  expenseCents,
+  month,
+  projectedCents,
+}: Props) {
   const { colors } = useTheme();
   const { hideValues } = usePrefs();
   const m = formatMonthShort(month);
@@ -57,6 +65,16 @@ export function BalanceCard({ balanceCents, incomeCents, expenseCents, month }: 
         adjustsFontSizeToFit
         numberOfLines={1}
       />
+      {projectedCents !== undefined && projectedCents !== balanceCents && (
+        <Text variant="caption" tone="heroMuted" style={{ marginTop: 2 }}>
+          Previsto para o fim do mês:{' '}
+          <Money
+            cents={projectedCents}
+            variant="caption"
+            style={{ color: projectedCents < 0 ? '#F2A49C' : colors.heroText, fontWeight: '700' }}
+          />
+        </Text>
+      )}
 
       <View style={[styles.line, { backgroundColor: colors.heroLine }]} />
 

@@ -306,6 +306,43 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 4,
+    name: 'contas a pagar/receber e recorrências',
+    up: async (db) => {
+      await db.execAsync(`
+        CREATE TABLE recurrences (
+          id               TEXT PRIMARY KEY NOT NULL,
+          kind             TEXT NOT NULL CHECK (kind IN ('income','expense')),
+          amount_cents     INTEGER NOT NULL CHECK (amount_cents > 0),
+          variable_amount  INTEGER NOT NULL DEFAULT 0,
+          description      TEXT NOT NULL,
+          category_id      TEXT REFERENCES categories(id),
+          account_id       TEXT REFERENCES accounts(id),
+          card_id          TEXT REFERENCES credit_cards(id),
+          frequency        TEXT NOT NULL CHECK (frequency IN ('weekly','monthly','yearly')),
+          interval_n       INTEGER NOT NULL DEFAULT 1 CHECK (interval_n BETWEEN 1 AND 36),
+          start_on         TEXT NOT NULL CHECK (start_on GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
+          end_on           TEXT,
+          max_count        INTEGER CHECK (max_count IS NULL OR max_count >= 1),
+          auto_pay         INTEGER NOT NULL DEFAULT 0,
+          notes            TEXT,
+          paused_at        TEXT,
+          generated_until  TEXT,
+          created_at       TEXT NOT NULL,
+          updated_at       TEXT NOT NULL,
+          deleted_at       TEXT,
+          CHECK ((account_id IS NULL) <> (card_id IS NULL))
+        );
+        CREATE INDEX idx_recurrences_updated_at ON recurrences (updated_at);
+
+        ALTER TABLE transactions ADD COLUMN due_on TEXT;
+        ALTER TABLE transactions ADD COLUMN recurrence_id TEXT REFERENCES recurrences(id);
+        CREATE INDEX idx_transactions_due        ON transactions (status, due_on);
+        CREATE INDEX idx_transactions_recurrence ON transactions (recurrence_id);
+      `);
+    },
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1]!.version;

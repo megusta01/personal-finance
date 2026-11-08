@@ -3,7 +3,7 @@
     "name": "Finanças",
     "slug": "personal-finance",
     "scheme": "financas",
-    "version": "2.2.0",
+    "version": "2.3.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -48,6 +48,13 @@
           "dark": {
             "backgroundColor": "#0C1416"
           }
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#0F4C5C",
+          "defaultChannel": "vencimentos"
         }
       ]
     ],

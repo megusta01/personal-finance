@@ -80,6 +80,21 @@ export const TransactionItem = memo(function TransactionItem({
           <Text variant="bodyStrong" numberOfLines={1} style={{ flexShrink: 1 }}>
             {item.description}
           </Text>
+          {item.status === 'pending' && (
+            <View style={[styles.badge, { backgroundColor: colors.surfaceMuted }]}>
+              <Text variant="micro" style={{ color: colors.accent }}>
+                {item.kind === 'income' ? 'A receber' : 'A pagar'}
+              </Text>
+            </View>
+          )}
+          {item.recurrenceId && (
+            <Ionicons
+              name="repeat"
+              size={13}
+              color={colors.textSubtle}
+              accessibilityLabel="Recorrente"
+            />
+          )}
           {installment && (
             <View
               style={[styles.badge, { backgroundColor: colors.surfaceMuted }]}
@@ -95,7 +110,7 @@ export const TransactionItem = memo(function TransactionItem({
           {subtitle}
         </Text>
       </View>
-      {neutral ? (
+      {neutral || item.status === 'pending' ? (
         <Money cents={item.amountCents} variant="bodyStrong" tone="muted" />
       ) : (
         <Money

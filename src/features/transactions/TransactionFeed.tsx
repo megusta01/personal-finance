@@ -237,7 +237,9 @@ export function TransactionFeed({ header, fixedAccountId }: Props) {
             <Text variant="caption" tone="muted">
               {formatDayHeading(section.date)}
             </Text>
-            <Money cents={section.net} sign="auto" variant="caption" tone="subtle" />
+            {section.hasPaid && (
+              <Money cents={section.net} sign="auto" variant="caption" tone="subtle" />
+            )}
           </View>
         )}
         renderItem={({ item, index, section }) => (
@@ -304,7 +306,7 @@ export function TransactionFeed({ header, fixedAccountId }: Props) {
   );
 }
 
-type DaySection = { date: string; net: number; data: TransactionRow[] };
+type DaySection = { date: string; net: number; hasPaid: boolean; data: TransactionRow[] };
 
 function groupByDay(
   rows: TransactionRow[],
@@ -315,11 +317,15 @@ function groupByDay(
   for (const r of rows) {
     let s = out[out.length - 1];
     if (!s || s.date !== r.occurredOn) {
-      s = { date: r.occurredOn, net: 0, data: [] };
+      s = { date: r.occurredOn, net: 0, hasPaid: false, data: [] };
       out.push(s);
     }
     s.data.push(r);
-    s.net += signedAmount(r, accountId, cardId);
+    // "A pagar/receber" aparece na lista, mas não entra no total do dia.
+    if (r.status !== 'pending') {
+      s.net += signedAmount(r, accountId, cardId);
+      s.hasPaid = true;
+    }
   }
   return out;
 }

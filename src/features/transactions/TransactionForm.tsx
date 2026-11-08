@@ -1,20 +1,22 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { z } from 'zod';
 import {
   Button,
   CategoryIcon,
+  ChoiceDialog,
   Chip,
   ConfirmDialog,
   DatePickerSheet,
   EmptyState,
   Field,
   FormLayout,
+  IconButton,
   MoneyInput,
   Segmented,
   Text,
@@ -22,7 +24,7 @@ import {
   useToast,
 } from '@/components/ui';
 import { useDb, useDbQuery } from '@/db/client';
-import type { Account, Category } from '@/db/schema';
+import type { Account, Category, Recurrence } from '@/db/schema';
 import { FALLBACK_CATEGORY } from '@/db/seed';
 import { ACCOUNT_TYPE_META } from '@/features/accounts/meta';
 import { getAccount, listActiveAccounts } from '@/features/accounts/repository';
@@ -35,6 +37,19 @@ import {
   saveCardPurchase,
 } from '@/features/cards/repository';
 import { getCategory, listCategoryTree, type CategoryNode } from '@/features/categories/repository';
+import { markBillPaid, markBillUnpaid } from '@/features/bills/repository';
+import {
+  createRecurrence,
+  endRecurrenceFrom,
+  getRecurrence,
+  lastDate,
+  occurrenceId,
+  scheduleOf,
+  updateRecurrenceFrom,
+  type RecurrenceInput,
+} from '@/features/recurrences/repository';
+import { REPEAT_OPTIONS } from '@/features/recurrences/meta';
+import { describeSchedule } from '@/features/recurrences/schedule';
 import {
   daysAgoISO,
   formatDateField,
@@ -50,6 +65,7 @@ import { radius, space } from '@/theme/tokens';
 import {
   createTransaction,
   deleteTransaction,
+  getTransaction,
   restoreTransaction,
   updateTransaction,
   type TransactionInput,
@@ -72,6 +88,14 @@ const schema = z
     toAccountId: z.string(),
     cardId: z.string(),
     installments: z.number().int().min(1).max(48),
+    /** Só para despesa/receita de conta: já pago ou ainda a pagar/receber. */
+    paid: z.boolean(),
+    repeat: z.enum(['none', 'w1', 'w2', 'm1', 'm2', 'm3', 'm6', 'y1']),
+    repeatEnd: z.enum(['never', 'count', 'date']),
+    repeatCount: z.number().int().min(2).max(360),
+    repeatUntil: z.string(),
+    variableAmount: z.boolean(),
+    autoPay: z.boolean(),
     occurredOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     notes: z.string().trim().max(500, 'Use no máximo 500 caracteres.'),
   })
@@ -86,6 +110,12 @@ const schema = z
         code: 'custom',
         path: ['installments'],
         message: 'Valor baixo demais para tantas parcelas.',
+      });
+    if (v.repeat !== 'none' && v.repeatEnd === 'date' && v.repeatUntil <= v.occurredOn)
+      ctx.addIssue({
+        code: 'custom',
+        path: ['repeatUntil'],
+        message: 'A data final precisa ser depois da primeira.',
       });
     if (v.kind === 'transfer') {
       if (!v.toAccountId)
@@ -130,6 +160,10 @@ type Props = {
     /** Compra/estorno no cartão. */
     cardId?: string | null;
     installments?: number;
+    status?: 'paid' | 'pending';
+    dueOn?: string | null;
+    /** Ocorrência de uma recorrência: ao salvar/excluir pergunta "só esta" ou "esta e as próximas". */
+    recurrenceId?: string | null;
   };
   /** Se o que está sendo editado é uma compra no cartão (todas as parcelas juntas). */
   editingCardPurchase?: boolean;
@@ -154,6 +188,7 @@ export function TransactionForm({ editingId, initial = {}, editingCardPurchase =
   const toast = useToast();
   const { colors } = useTheme();
   const [dateOpen, setDateOpen] = useState(false);
+  const [untilOpen, setUntilOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [gridWidth, setGridWidth] = useState(0);
 
@@ -182,6 +217,15 @@ export function TransactionForm({ editingId, initial = {}, editingCardPurchase =
       source: initial.cardId && kind !== 'transfer' ? 'card' : 'account',
       cardId: initial.cardId ?? listCards(db)[0]?.id ?? '',
       installments: initial.installments ?? 1,
+      paid: initial.status
+        ? initial.status === 'paid'
+        : (initial.occurredOn ?? todayISO()) <= todayISO(),
+      repeat: 'none',
+      repeatEnd: 'never',
+      repeatCount: 12,
+      repeatUntil: '',
+      variableAmount: false,
+      autoPay: false,
       occurredOn: initial.occurredOn ?? todayISO(),
       notes: initial.notes ?? '',
     };
@@ -208,6 +252,13 @@ export function TransactionForm({ editingId, initial = {}, editingCardPurchase =
     cardId,
     installments,
     amountCents,
+    paid,
+    repeat,
+    repeatEnd,
+    repeatCount,
+    repeatUntil,
+    variableAmount,
+    autoPay,
   ] = useWatch({
     control,
     name: [
@@ -221,6 +272,13 @@ export function TransactionForm({ editingId, initial = {}, editingCardPurchase =
       'cardId',
       'installments',
       'amountCents',
+      'paid',
+      'repeat',
+      'repeatEnd',
+      'repeatCount',
+      'repeatUntil',
+      'variableAmount',
+      'autoPay',
     ],
   });
 
@@ -275,10 +333,102 @@ export function TransactionForm({ editingId, initial = {}, editingCardPurchase =
     }
   };
 
+  const editingOccurrence = !!(editingId && initial.recurrenceId);
+  const [rule] = useState(() =>
+    initial.recurrenceId ? getRecurrence(db, initial.recurrenceId) : undefined,
+  );
+  const paidTouched = useRef(false);
+  const showStatus = !isTransfer && source === 'account';
+  const canRepeat =
+    !editingId && !isTransfer && !(usesCard && kind === 'expense' && installments > 1);
+
+  /** Ao escolher uma data futura, o lançamento vira "a pagar" (se a pessoa não escolheu antes). */
+  const setDate = (d: string) => {
+    setValue('occurredOn', d);
+    if (!paidTouched.current && !editingId) setValue('paid', d <= todayISO());
+  };
+  const [scopeFor, setScopeFor] = useState<
+    null | { action: 'save'; values: Values } | { action: 'delete' }
+  >(null);
+
   const onSubmit = handleSubmit((v) => {
-    const categoryName =
+    // Ocorrência de recorrência: pergunta antes se vale só para esta ou para as próximas.
+    if (editingOccurrence) setScopeFor({ action: 'save', values: v });
+    else save(v, 'only');
+  });
+
+  /** Regra de recorrência montada a partir do formulário. */
+  function ruleFrom(v: Values, base?: Recurrence): RecurrenceInput {
+    const opt = REPEAT_OPTIONS.find((o) => o.key === v.repeat);
+    const isCardRule = v.source === 'card';
+    return {
+      kind: v.kind === 'income' ? 'income' : 'expense',
+      amountCents: v.amountCents,
+      variableAmount: base ? base.variableAmount : v.variableAmount,
+      description:
+        v.description.trim() || categoryNameOf(v) || (v.kind === 'income' ? 'Receita' : 'Despesa'),
+      categoryId: v.subcategoryId || v.categoryId,
+      accountId: isCardRule ? null : v.accountId,
+      cardId: isCardRule ? v.cardId : null,
+      frequency: base?.frequency ?? opt?.frequency ?? 'monthly',
+      interval: base?.interval ?? opt?.interval ?? 1,
+      startOn: v.occurredOn,
+      // Ao editar "daqui pra frente", o limite por número de vezes vira data final.
+      endOn: base ? lastDate(base) : v.repeatEnd === 'date' ? v.repeatUntil : null,
+      maxCount: base ? null : v.repeatEnd === 'count' ? v.repeatCount : null,
+      autoPay: base ? base.autoPay : v.autoPay,
+      notes: v.notes,
+    };
+  }
+
+  function categoryNameOf(v: Values) {
+    return (
       parent?.children.find((c) => c.id === v.subcategoryId)?.name ??
-      catalog?.tree.find((c) => c.id === v.categoryId)?.name;
+      catalog?.tree.find((c) => c.id === v.categoryId)?.name
+    );
+  }
+
+  function save(v: Values, scope: 'only' | 'following') {
+    // Nova recorrência
+    if (!editingId && v.kind !== 'transfer' && v.repeat !== 'none') {
+      const recId = createRecurrence(db, ruleFrom(v));
+      const first = occurrenceId(recId, v.occurredOn);
+      if (
+        v.source === 'account' &&
+        v.paid &&
+        v.occurredOn <= todayISO() &&
+        getTransaction(db, first)?.status === 'pending'
+      ) {
+        markBillPaid(db, first, {
+          paidOn: v.occurredOn,
+          amountCents: v.amountCents,
+          accountId: v.accountId,
+        });
+      }
+      if (v.source === 'account') setLastAccountId(v.accountId);
+      done('Recorrência criada');
+      return;
+    }
+    // Esta e as próximas
+    if (editingId && scope === 'following' && initial.recurrenceId && v.kind !== 'transfer') {
+      const base = getRecurrence(db, initial.recurrenceId);
+      if (base) {
+        updateRecurrenceFrom(db, base.id, ruleFrom(v, base), { anchorTxId: editingId });
+        if (v.source === 'account') {
+          const now = getTransaction(db, editingId);
+          if (v.paid && now?.status === 'pending')
+            markBillPaid(db, editingId, {
+              paidOn: todayISO() < v.occurredOn ? v.occurredOn : todayISO(),
+              amountCents: v.amountCents,
+              accountId: v.accountId,
+            });
+          if (!v.paid && now?.status === 'paid') markBillUnpaid(db, editingId);
+        }
+        done('Alterações salvas');
+        return;
+      }
+    }
+    const categoryName = categoryNameOf(v);
 
     // Compra ou estorno no cartão
     if (v.kind !== 'transfer' && v.source === 'card') {
@@ -332,13 +482,16 @@ export function TransactionForm({ editingId, initial = {}, editingCardPurchase =
         accountId: v.accountId,
         occurredOn: v.occurredOn,
         notes: v.notes,
+        status: v.paid ? 'paid' : 'pending',
+        // Conta paga continua lembrando quando venceu.
+        dueOn: v.paid ? (initial.dueOn ?? null) : v.occurredOn,
       };
     }
     if (updateId) updateTransaction(db, updateId, input);
     else createTransaction(db, input);
     setLastAccountId(v.accountId);
     done(NOUN[v.kind].saved);
-  });
+  }
 
   function done(message: string) {
     if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -346,9 +499,18 @@ export function TransactionForm({ editingId, initial = {}, editingCardPurchase =
     router.back();
   }
 
+  const deleteFollowing = () => {
+    if (!editingId || !initial.recurrenceId) return;
+    setScopeFor(null);
+    endRecurrenceFrom(db, initial.recurrenceId, initial.dueOn ?? initial.occurredOn ?? todayISO());
+    toast({ message: 'Esta e as próximas foram excluídas' });
+    router.back();
+  };
+
   const onDelete = () => {
     if (!editingId) return;
     setConfirmDelete(false);
+    setScopeFor(null);
     if (editingCardPurchase) {
       // Compra parcelada: exclui todas as parcelas juntas.
       const ids = deleteCardPurchase(db, editingId);
@@ -538,17 +700,21 @@ export function TransactionForm({ editingId, initial = {}, editingCardPurchase =
             </>
           )}
 
-          <Field label="Data">
+          <Field
+            label={
+              showStatus && (!paid || repeat !== 'none')
+                ? 'Vencimento'
+                : repeat !== 'none'
+                  ? 'Primeira data'
+                  : 'Data'
+            }
+          >
             <View style={styles.row}>
-              <Chip
-                label="Hoje"
-                selected={occurredOn === today}
-                onPress={() => setValue('occurredOn', today)}
-              />
+              <Chip label="Hoje" selected={occurredOn === today} onPress={() => setDate(today)} />
               <Chip
                 label="Ontem"
                 selected={occurredOn === yesterday}
-                onPress={() => setValue('occurredOn', yesterday)}
+                onPress={() => setDate(yesterday)}
               />
               <Chip
                 icon="calendar-outline"
@@ -628,6 +794,153 @@ export function TransactionForm({ editingId, initial = {}, editingCardPurchase =
             />
           )}
 
+          {showStatus && (
+            <Segmented
+              accessibilityLabel="Situação"
+              value={paid ? 'paid' : 'pending'}
+              onChange={(v) => {
+                paidTouched.current = true;
+                setValue('paid', v === 'paid');
+              }}
+              options={
+                kind === 'income'
+                  ? [
+                      { value: 'paid', label: 'Recebido' },
+                      { value: 'pending', label: 'A receber', activeColor: colors.accent },
+                    ]
+                  : [
+                      { value: 'paid', label: 'Pago' },
+                      { value: 'pending', label: 'A pagar', activeColor: colors.accent },
+                    ]
+              }
+            />
+          )}
+
+          {editingOccurrence && rule && (
+            <View style={[styles.preview, { backgroundColor: colors.surfaceMuted }]}>
+              <Ionicons name="repeat" size={18} color={colors.textMuted} />
+              <View style={{ flex: 1, gap: 4 }}>
+                <Text variant="caption">
+                  Faz parte da recorrência “{rule.description}”:{' '}
+                  {describeSchedule(scheduleOf(rule)).toLowerCase()}.
+                </Text>
+                <Pressable
+                  onPress={() => router.push(`/recorrencia/${rule.id}`)}
+                  accessibilityRole="link"
+                  hitSlop={8}
+                >
+                  <Text variant="caption" tone="brand" style={{ fontWeight: '700' }}>
+                    Editar frequência ou término
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          )}
+
+          {canRepeat && (
+            <Field label="Repetir" error={errors.repeatUntil?.message}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ gap: space.sm }}
+              >
+                {REPEAT_OPTIONS.map((o) => (
+                  <Chip
+                    key={o.key}
+                    label={o.label}
+                    icon={o.key === 'none' ? undefined : 'repeat'}
+                    selected={repeat === o.key}
+                    onPress={() => setValue('repeat', o.key)}
+                  />
+                ))}
+              </ScrollView>
+              {repeat !== 'none' && (
+                <View style={{ gap: space.md, marginTop: space.xs }}>
+                  <Text variant="caption" tone="muted">
+                    Termina
+                  </Text>
+                  <View style={styles.row}>
+                    <Chip
+                      label="Nunca"
+                      selected={repeatEnd === 'never'}
+                      onPress={() => setValue('repeatEnd', 'never')}
+                    />
+                    <Chip
+                      label={
+                        repeatEnd === 'count'
+                          ? `Depois de ${repeatCount} vezes`
+                          : 'Depois de N vezes'
+                      }
+                      selected={repeatEnd === 'count'}
+                      onPress={() => setValue('repeatEnd', 'count')}
+                    />
+                    <Chip
+                      icon="calendar-outline"
+                      label={
+                        repeatEnd === 'date' && repeatUntil
+                          ? `Em ${formatDateField(repeatUntil)}`
+                          : 'Em uma data'
+                      }
+                      selected={repeatEnd === 'date'}
+                      onPress={() => {
+                        setValue('repeatEnd', 'date');
+                        setUntilOpen(true);
+                      }}
+                    />
+                  </View>
+                  {repeatEnd === 'count' && (
+                    <View style={styles.stepper}>
+                      <IconButton
+                        icon="remove"
+                        label="Menos uma vez"
+                        background={colors.surfaceMuted}
+                        disabled={repeatCount <= 2}
+                        onPress={() => setValue('repeatCount', Math.max(2, repeatCount - 1))}
+                      />
+                      <Text
+                        variant="heading"
+                        tabular
+                        style={{ minWidth: 90, textAlign: 'center' }}
+                        accessibilityLiveRegion="polite"
+                      >
+                        {repeatCount} vezes
+                      </Text>
+                      <IconButton
+                        icon="add"
+                        label="Mais uma vez"
+                        background={colors.surfaceMuted}
+                        onPress={() => setValue('repeatCount', Math.min(360, repeatCount + 1))}
+                      />
+                    </View>
+                  )}
+                  <SwitchRow
+                    title="Valor muda a cada vez"
+                    subtitle="Para contas como luz e água: na hora de pagar, o app pede o valor certo."
+                    value={variableAmount}
+                    onChange={(b) => setValue('variableAmount', b)}
+                  />
+                  {source === 'account' && (
+                    <SwitchRow
+                      title={kind === 'income' ? 'Cai automaticamente' : 'Débito automático'}
+                      subtitle={
+                        kind === 'income'
+                          ? 'Marca como recebido sozinho no dia.'
+                          : 'Marca como pago sozinho no dia do vencimento.'
+                      }
+                      value={autoPay}
+                      onChange={(b) => setValue('autoPay', b)}
+                    />
+                  )}
+                  {usesCard && (
+                    <Text variant="caption" tone="subtle">
+                      Assinatura no cartão: o app lança a cobrança no dia, na fatura certa.
+                    </Text>
+                  )}
+                </View>
+              )}
+            </Field>
+          )}
+
           <Controller
             control={control}
             name="notes"
@@ -652,15 +965,49 @@ export function TransactionForm({ editingId, initial = {}, editingCardPurchase =
           label="Excluir transação"
           variant="danger"
           icon="trash-outline"
-          onPress={() => setConfirmDelete(true)}
+          onPress={() =>
+            editingOccurrence ? setScopeFor({ action: 'delete' }) : setConfirmDelete(true)
+          }
         />
       )}
 
       <DatePickerSheet
+        visible={untilOpen}
+        value={repeatUntil || occurredOn}
+        onSelect={(d) => setValue('repeatUntil', d, { shouldValidate: true })}
+        onClose={() => setUntilOpen(false)}
+      />
+      <DatePickerSheet
         visible={dateOpen}
         value={occurredOn}
-        onSelect={(d) => setValue('occurredOn', d)}
+        onSelect={setDate}
         onClose={() => setDateOpen(false)}
+      />
+      <ChoiceDialog
+        visible={scopeFor?.action === 'save'}
+        title="Salvar alterações"
+        message="Este lançamento faz parte de uma recorrência."
+        choices={[
+          { value: 'only', label: 'Só nesta' },
+          { value: 'following', label: 'Nesta e nas próximas', primary: true },
+        ]}
+        onChoose={(scope) => {
+          const values = scopeFor?.action === 'save' ? scopeFor.values : null;
+          setScopeFor(null);
+          if (values) save(values, scope);
+        }}
+        onCancel={() => setScopeFor(null)}
+      />
+      <ChoiceDialog
+        visible={scopeFor?.action === 'delete'}
+        title="Excluir"
+        message="Este lançamento faz parte de uma recorrência. As ocorrências já pagas continuam no histórico."
+        choices={[
+          { value: 'only', label: 'Só esta', destructive: true },
+          { value: 'following', label: 'Esta e as próximas', destructive: true, primary: true },
+        ]}
+        onChoose={(scope) => (scope === 'only' ? onDelete() : deleteFollowing())}
+        onCancel={() => setScopeFor(null)}
       />
       <ConfirmDialog
         visible={confirmDelete}
@@ -672,6 +1019,37 @@ export function TransactionForm({ editingId, initial = {}, editingCardPurchase =
         onCancel={() => setConfirmDelete(false)}
       />
     </FormLayout>
+  );
+}
+
+function SwitchRow({
+  title,
+  subtitle,
+  value,
+  onChange,
+}: {
+  title: string;
+  subtitle: string;
+  value: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  const { colors } = useTheme();
+  return (
+    <View style={styles.switchRow}>
+      <View style={{ flex: 1, gap: 2 }}>
+        <Text variant="bodyStrong">{title}</Text>
+        <Text variant="caption" tone="muted">
+          {subtitle}
+        </Text>
+      </View>
+      <Switch
+        value={value}
+        onValueChange={onChange}
+        accessibilityLabel={title}
+        trackColor={{ true: colors.brand, false: colors.border }}
+        thumbColor={colors.surface}
+      />
+    </View>
   );
 }
 
@@ -767,6 +1145,8 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth * 2,
   },
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
+  switchRow: { flexDirection: 'row', alignItems: 'center', gap: space.lg },
+  stepper: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.md },
   preview: {
     flexDirection: 'row',
     gap: space.sm,

@@ -1,8 +1,8 @@
 # Finanças
 
 App pessoal para administrar a vida financeira: contas com saldo próprio, transferências,
-cartões de crédito (faturas, limite, compras parceladas), categorias e subcategorias,
-extrato por mês com filtros e câmbio.
+cartões de crédito (faturas, limite, compras parceladas), contas a pagar e a receber,
+recorrências com lembretes, categorias e subcategorias, extrato por mês com filtros e câmbio.
 Os dados ficam no aparelho (SQLite) e funcionam sem internet. A sincronização com o Supabase
 entra numa fase própria (veja o roteiro abaixo).
 
@@ -42,6 +42,8 @@ src/
     conta/                [id] (detalhe com extrato), nova, editar/[id], ajustar/[id]
     categorias/           lista, nova (?tipo=&pai=), [id] (editar)
     cartao/               [id] (faturas e limite), novo, editar/[id], pagar/[id] (?fatura=AAAA-MM)
+    pagamentos/           a pagar e a receber (index) e pagar/[id] (marcar como pago)
+    recorrencias.tsx      lista de recorrências; recorrencia/[id] edita uma
     cambio.tsx            cotações e conversor
   components/ui/          design system: Text, Button, Money, MoneyInput, Segmented, Chip,
                           Surface, TextField, DatePickerSheet, ConfirmDialog, Toast, Screen…
@@ -54,6 +56,9 @@ src/
     transactions/         repositório, formulário (despesa/receita/transferência), extrato (TransactionFeed)
     accounts/             saldo por conta, criar/editar/arquivar, ajuste de saldo
     categories/           árvore de categorias e subcategorias, criar/editar/arquivar
+    bills/                contas em aberto, marcar pago, resumo do mês e saldo previsto
+    recurrences/          schedule.ts (datas), geração das ocorrências, editar/encerrar/pausar
+    reminders/            plan.ts (quais lembretes), notificações locais, BackgroundJobs
     cards/                cycle.ts (regras de fechamento/vencimento/parcelas), cartões, compras, faturas, pagamento
     catalog/              metadados locais (app_meta)
     home/                 cartão de saldo e gráfico mensal
@@ -89,6 +94,19 @@ src/
   - Pagar a fatura tira da conta e abate a fatura; não conta como despesa (as compras já contaram).
   - Limite usado = compras (inclusive parcelas futuras) − estornos − pagamentos.
   - Situação da fatura: futura, aberta, fechada, paga ou vencida.
+- **A pagar e a receber**: lançamento com situação "a pagar" (ou "a receber") tem vencimento,
+  não entra no saldo nem nos totais até ser marcado como pago. Ao pagar, dá para ajustar valor,
+  data e conta; o vencimento continua guardado.
+- **Recorrências**: semanal, mensal ou anual (a cada N), com fim opcional por data ou número de vezes.
+  O app cria as ocorrências dos próximos 45 dias (no cartão, só até hoje) com IDs previsíveis
+  (`recorrência@data`), ao abrir e ao voltar para o app. O que já existe nunca é sobrescrito:
+  ocorrência editada ou excluída continua como a pessoa deixou. "Esta e as próximas" refaz só o que
+  está em aberto; o que já foi pago não muda. Débito automático marca como pago sozinho no dia.
+- **Saldo previsto para o fim do mês** = saldo de hoje + a receber − a pagar (até o fim do mês)
+  − faturas de cartão em aberto que vencem no mês.
+- **Lembretes** (notificações locais; funcionam no Expo Go): no dia do vencimento e, se quiser, N dias
+  antes, no horário escolhido. Vale para contas, recebimentos e faturas. Vencidas viram um aviso-resumo.
+  No máximo 60 agendados (limite do iOS: 64). Com "Ocultar valores", os avisos não mostram valores.
 - **Dados da versão 1**: na primeira abertura, a tabela antiga `transacoes` é convertida
   (valores para centavos, datas para ISO, tipo preservado) e renomeada para
   `legacy_transacoes_v1` como cópia de segurança. Transações com valor zero são ignoradas.
@@ -107,6 +125,7 @@ src/
       ajuste de saldo, gerenciar categorias e subcategorias, filtros por conta e categoria
 - [x] **Fase 3**: cartões de crédito, faturas por ciclo, limite disponível, compras parceladas,
       estornos, pagamento total ou parcial da fatura
-- [ ] **Fase 4**: contas a pagar e a receber, recorrências, notificações de vencimento
+- [x] **Fase 4**: contas a pagar e a receber, recorrências (com débito automático e valor variável),
+      lembretes de vencimento, saldo previsto para o fim do mês
 - [ ] **Fase 5**: dashboard novo, orçamentos por categoria, metas, backup/exportação, biometria
 - [ ] **Sync**: login e sincronização com o Supabase (fila local + `updated_at`, RLS por usuário)

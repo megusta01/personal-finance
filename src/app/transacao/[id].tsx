@@ -86,6 +86,7 @@ export default function EditarTransacao() {
           installments: p.installments,
           occurredOn: p.purchasedOn,
           notes: p.notes,
+          recurrenceId: p.recurrenceId,
         }}
       />
     );
@@ -105,6 +106,9 @@ export default function EditarTransacao() {
         toAccountId: tx.toAccountId,
         occurredOn: tx.occurredOn,
         notes: tx.notes,
+        status: tx.status,
+        dueOn: tx.dueOn,
+        recurrenceId: tx.recurrenceId,
       }}
     />
   );
