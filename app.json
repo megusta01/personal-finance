@@ -3,7 +3,7 @@
     "name": "Finanças",
     "slug": "personal-finance",
     "scheme": "financas",
-    "version": "2.3.0",
+    "version": "2.4.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -55,6 +55,13 @@
         {
           "color": "#0F4C5C",
           "defaultChannel": "vencimentos"
+        }
+      ],
+      "expo-sharing",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Use o Face ID para desbloquear o app e proteger seus dados financeiros."
         }
       ]
     ],

@@ -162,6 +162,23 @@ export function listPending(
     .all();
 }
 
+/** Todos os lançamentos (para exportar), do mais antigo ao mais novo. */
+export function listAllTransactions(
+  db: AppDb,
+  range?: { from?: string; to?: string },
+): TransactionRow[] {
+  return listSelect(db)
+    .where(
+      and(
+        alive,
+        range?.from ? gte(transactions.occurredOn, range.from) : undefined,
+        range?.to ? lte(transactions.occurredOn, range.to) : undefined,
+      ),
+    )
+    .orderBy(asc(transactions.occurredOn), asc(transactions.createdAt))
+    .all();
+}
+
 export function listRecent(db: AppDb, limit = 5): TransactionRow[] {
   return listSelect(db)
     .where(alive)

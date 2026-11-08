@@ -143,11 +143,54 @@ export const recurrences = sqliteTable('recurrences', {
   ...syncColumns,
 });
 
+/** Orçamento mensal de uma categoria principal de despesa (inclui as subcategorias). */
+export const budgets = sqliteTable('budgets', {
+  id: text('id').primaryKey(),
+  categoryId: text('category_id').notNull(),
+  amountCents: integer('amount_cents').notNull(),
+  ...syncColumns,
+});
+
+/** Meta de economia. Com conta vinculada, o progresso é o saldo dela; sem, a soma dos aportes. */
+export const goals = sqliteTable('goals', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  targetCents: integer('target_cents').notNull(),
+  targetDate: text('target_date'),
+  color: text('color').notNull(),
+  icon: text('icon').notNull(),
+  accountId: text('account_id'),
+  archivedAt: text('archived_at'),
+  ...syncColumns,
+});
+
+/** Aporte (positivo) ou retirada (negativa) de uma meta sem conta vinculada. */
+export const goalEntries = sqliteTable('goal_entries', {
+  id: text('id').primaryKey(),
+  goalId: text('goal_id').notNull(),
+  amountCents: integer('amount_cents').notNull(),
+  occurredOn: text('occurred_on').notNull(),
+  note: text('note'),
+  ...syncColumns,
+});
+
 export type Account = typeof accounts.$inferSelect;
+export type Budget = typeof budgets.$inferSelect;
+export type Goal = typeof goals.$inferSelect;
+export type GoalEntry = typeof goalEntries.$inferSelect;
 export type Recurrence = typeof recurrences.$inferSelect;
 export type CreditCard = typeof creditCards.$inferSelect;
 export type Category = typeof categories.$inferSelect;
 export type Transaction = typeof transactions.$inferSelect;
 export type NewTransaction = typeof transactions.$inferInsert;
 
-export const schema = { accounts, categories, transactions, creditCards, recurrences };
+export const schema = {
+  accounts,
+  categories,
+  transactions,
+  creditCards,
+  recurrences,
+  budgets,
+  goals,
+  goalEntries,
+};

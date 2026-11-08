@@ -24,16 +24,16 @@ export function MonthlyChart({ data, current }: { data: Point[]; current: MonthK
   return (
     <View>
       <View style={styles.legend}>
-        <Legend color={colors.income} label="Entradas" />
-        <Legend color={colors.expense} label="Saídas" />
+        <Legend color={colors.chartIn} label="Entradas" />
+        <Legend color={colors.chartOut} label="Saídas" />
       </View>
       <View style={[styles.plot, { borderBottomColor: colors.border }]}>
         {data.map((d) => {
           const label = `${formatMonthShort(d.month)}: entradas ${hideValues ? 'ocultas' : formatBRL(d.incomeCents)}, saídas ${hideValues ? 'ocultas' : formatBRL(d.expenseCents)}`;
           return (
             <View key={d.month} style={styles.group} accessible accessibilityLabel={label}>
-              <Bar value={d.incomeCents} max={max} color={colors.income} />
-              <Bar value={d.expenseCents} max={max} color={colors.expense} />
+              <Bar value={d.incomeCents} max={max} color={colors.chartIn} />
+              <Bar value={d.expenseCents} max={max} color={colors.chartOut} />
             </View>
           );
         })}

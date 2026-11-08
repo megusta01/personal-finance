@@ -1,10 +1,11 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { StyleSheet, Switch, View } from 'react-native';
 import {
   Chip,
+  ConfirmDialog,
   Divider,
   ListRow,
   Screen,
@@ -12,14 +13,29 @@ import {
   Segmented,
   Surface,
   Text,
+  useToast,
 } from '@/components/ui';
-import { useDbQuery } from '@/db/client';
+import { useDb, useDbQuery } from '@/db/client';
+import {
+  backupFileName,
+  createBackup,
+  describeBackup,
+  parseBackup,
+  restoreBackup,
+  type Backup,
+  type BackupInfo,
+} from '@/features/backup/backup';
+import { csvFileName, exportCsv } from '@/features/backup/csv';
+import { pickTextFile, saveAndShare } from '@/features/backup/files';
+import { generateAll } from '@/features/recurrences/repository';
+import { authenticate, lockAvailability, lockSupported } from '@/features/security/auth';
 import { getMeta } from '@/features/catalog/meta';
 import { countTransactions } from '@/features/transactions/repository';
 import { formatDateShort } from '@/lib/dates';
 import { requestPermission, remindersSupported } from '@/features/reminders/notifications';
 import {
   setHideValues,
+  setLockEnabled,
   setReminderPrefs,
   setThemePref,
   usePrefs,
@@ -31,6 +47,76 @@ import { space } from '@/theme/tokens';
 export default function Mais() {
   const { colors } = useTheme();
   const prefs = usePrefs();
+  const db = useDb();
+  const toast = useToast();
+  const [lockError, setLockError] = useState<string | null>(null);
+  const [lockLabel, setLockLabel] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    lockAvailability().then((a) => alive && setLockLabel(a.ok ? a.label : null));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  /** Ligar ou desligar exige se autenticar (evita que outra pessoa desligue). */
+  const toggleLock = async (on: boolean) => {
+    setLockError(null);
+    if (on) {
+      const a = await lockAvailability();
+      if (!a.ok) return setLockError(a.reason);
+    }
+    if (
+      await authenticate(
+        on ? 'Confirme para ligar o bloqueio' : 'Confirme para desligar o bloqueio',
+      )
+    )
+      setLockEnabled(on);
+  };
+
+  const [pending, setPending] = useState<{ backup: Backup; info: BackupInfo } | null>(null);
+
+  const run = async (what: 'csv' | 'backup') => {
+    try {
+      if (what === 'csv') {
+        await saveAndShare(csvFileName(), exportCsv(db), 'text/csv', 'Exportar planilha');
+      } else {
+        await saveAndShare(
+          backupFileName(),
+          JSON.stringify(createBackup(db, Constants.expoConfig?.version)),
+          'application/json',
+          'Salvar backup',
+        );
+      }
+    } catch (e) {
+      toast({ message: (e as Error).message || 'Não foi possível gerar o arquivo.' });
+    }
+  };
+
+  const pickBackup = async () => {
+    try {
+      const text = await pickTextFile();
+      if (!text) return;
+      const backup = parseBackup(text);
+      setPending({ backup, info: describeBackup(backup) });
+    } catch (e) {
+      toast({ message: (e as Error).message, duration: 6000 });
+    }
+  };
+
+  const confirmRestore = () => {
+    if (!pending) return;
+    try {
+      restoreBackup(db, pending.backup);
+      generateAll(db);
+      toast({ message: 'Backup restaurado' });
+    } catch (e) {
+      toast({ message: (e as Error).message, duration: 6000 });
+    } finally {
+      setPending(null);
+    }
+  };
   const [permissionDenied, setPermissionDenied] = useState(false);
 
   const toggleReminders = async (on: boolean) => {
@@ -74,6 +160,30 @@ export default function Mais() {
           subtitle="Cotações e conversor de moedas"
           left={<Ionicons name="globe-outline" size={22} color={colors.brand} />}
           onPress={() => router.push('/cambio')}
+        />
+      </Surface>
+
+      <SectionHeader title="Planejar" />
+      <Surface>
+        <ListRow
+          title="Relatórios"
+          subtitle="Gastos por categoria, ritmo do mês e 12 meses"
+          left={<Ionicons name="pie-chart-outline" size={22} color={colors.brand} />}
+          onPress={() => router.push('/relatorios')}
+        />
+        <Divider inset={56} />
+        <ListRow
+          title="Orçamentos"
+          subtitle="Limite de gasto por categoria"
+          left={<Ionicons name="speedometer-outline" size={22} color={colors.brand} />}
+          onPress={() => router.push('/orcamentos')}
+        />
+        <Divider inset={56} />
+        <ListRow
+          title="Metas"
+          subtitle="Juntar dinheiro para um objetivo"
+          left={<Ionicons name="flag-outline" size={22} color={colors.brand} />}
+          onPress={() => router.push('/metas')}
         />
       </Surface>
 
@@ -165,6 +275,35 @@ export default function Mais() {
         )}
       </Surface>
 
+      {lockSupported && (
+        <>
+          <SectionHeader title="Segurança" />
+          <Surface style={{ padding: space.lg, gap: space.sm }}>
+            <View style={styles.row}>
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text variant="bodyStrong">Bloquear o app</Text>
+                <Text variant="caption" tone="muted">
+                  Pede {lockLabel ?? 'biometria'} ao abrir e ao voltar depois de 1 minuto. Esconde
+                  os valores na lista de apps abertos.
+                </Text>
+              </View>
+              <Switch
+                value={prefs.lockEnabled}
+                onValueChange={toggleLock}
+                accessibilityLabel="Bloquear o app"
+                trackColor={{ true: colors.brand, false: colors.border }}
+                thumbColor={colors.surface}
+              />
+            </View>
+            {lockError && (
+              <Text variant="caption" tone="danger">
+                {lockError}
+              </Text>
+            )}
+          </Surface>
+        </>
+      )}
+
       <SectionHeader title="Aparência" />
       <Surface style={{ padding: space.lg, gap: space.lg }}>
         <Segmented<ThemePref>
@@ -213,13 +352,50 @@ export default function Mais() {
           </>
         )}
         <Divider inset={56} />
+        <ListRow
+          title="Exportar planilha"
+          subtitle="Todos os lançamentos em CSV, abre no Excel e no Google Planilhas"
+          left={<Ionicons name="document-text-outline" size={22} color={colors.brand} />}
+          onPress={() => run('csv')}
+          chevron={false}
+        />
+        <Divider inset={56} />
+        <ListRow
+          title="Fazer backup"
+          subtitle="Arquivo com todos os seus dados. Guarde no Drive, e-mail ou computador."
+          left={<Ionicons name="cloud-download-outline" size={22} color={colors.brand} />}
+          onPress={() => run('backup')}
+          chevron={false}
+        />
+        <Divider inset={56} />
+        <ListRow
+          title="Restaurar backup"
+          subtitle="Substitui os dados deste aparelho pelos de um arquivo de backup"
+          left={<Ionicons name="cloud-upload-outline" size={22} color={colors.brand} />}
+          onPress={pickBackup}
+          chevron={false}
+        />
+        <Divider inset={56} />
         <InfoRow
-          icon="cloud-outline"
-          title="Backup e sincronização"
-          detail="Em uma próxima versão: entrar com sua conta para guardar na nuvem e usar em mais de um aparelho."
+          icon="sync-outline"
+          title="Sincronização na nuvem"
+          detail="Em uma próxima versão: entrar com sua conta para usar em mais de um aparelho."
           muted
         />
       </Surface>
+      <ConfirmDialog
+        visible={!!pending}
+        title="Restaurar este backup?"
+        message={
+          pending
+            ? `Backup de ${formatDateShort(pending.info.createdAt.slice(0, 10))}, com ${pending.info.transactions} lançamentos. Todos os dados atuais deste aparelho serão substituídos. Se quiser, faça um backup antes.`
+            : undefined
+        }
+        confirmLabel="Restaurar"
+        destructive
+        onConfirm={confirmRestore}
+        onCancel={() => setPending(null)}
+      />
 
       <Text variant="caption" tone="subtle" align="center" style={{ marginTop: space.lg }}>
         Finanças, versão {Constants.expoConfig?.version ?? '2.0.0'}

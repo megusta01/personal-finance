@@ -2,7 +2,8 @@
 
 App pessoal para administrar a vida financeira: contas com saldo próprio, transferências,
 cartões de crédito (faturas, limite, compras parceladas), contas a pagar e a receber,
-recorrências com lembretes, categorias e subcategorias, extrato por mês com filtros e câmbio.
+recorrências com lembretes, categorias e subcategorias, extrato por mês com filtros, relatórios,
+orçamentos por categoria, metas, backup/planilha, bloqueio com biometria e câmbio.
 Os dados ficam no aparelho (SQLite) e funcionam sem internet. A sincronização com o Supabase
 entra numa fase própria (veja o roteiro abaixo).
 
@@ -44,6 +45,9 @@ src/
     cartao/               [id] (faturas e limite), novo, editar/[id], pagar/[id] (?fatura=AAAA-MM)
     pagamentos/           a pagar e a receber (index) e pagar/[id] (marcar como pago)
     recorrencias.tsx      lista de recorrências; recorrencia/[id] edita uma
+    relatorios.tsx        gastos/receitas por categoria, ritmo do mês, 12 meses, maiores gastos
+    orcamentos.tsx        orçamentos do mês; orcamento/editar (?categoria=id)
+    metas.tsx             metas; meta/[id] (detalhe), meta/editar (?id), meta/movimentar/[id] (?tipo=guardar|retirar)
     cambio.tsx            cotações e conversor
   components/ui/          design system: Text, Button, Money, MoneyInput, Segmented, Chip,
                           Surface, TextField, DatePickerSheet, ConfirmDialog, Toast, Screen…
@@ -60,6 +64,11 @@ src/
     recurrences/          schedule.ts (datas), geração das ocorrências, editar/encerrar/pausar
     reminders/            plan.ts (quais lembretes), notificações locais, BackgroundJobs
     cards/                cycle.ts (regras de fechamento/vencimento/parcelas), cartões, compras, faturas, pagamento
+    reports/              consultas dos relatórios e gráficos (ShareBar, PaceChart, FlowChart)
+    budgets/              orçamentos: situação, ritmo projetado, barra e selo
+    goals/                metas: progresso, quanto guardar por mês, entradas e retiradas
+    backup/               backup JSON (criar, validar, restaurar), planilha CSV, salvar/abrir arquivos
+    security/             bloqueio com biometria (LockGate) e autenticação
     catalog/              metadados locais (app_meta)
     home/                 cartão de saldo e gráfico mensal
     rates/                cotações (AwesomeAPI)
@@ -107,6 +116,22 @@ src/
 - **Lembretes** (notificações locais; funcionam no Expo Go): no dia do vencimento e, se quiser, N dias
   antes, no horário escolhido. Vale para contas, recebimentos e faturas. Vencidas viram um aviso-resumo.
   No máximo 60 agendados (limite do iOS: 64). Com "Ocultar valores", os avisos não mostram valores.
+- **Relatórios** usam só lançamentos pagos; ficam de fora transferências, pagamentos de fatura,
+  ajustes de saldo e contas ainda a pagar. Compras no cartão entram na data de cada parcela.
+  Subcategorias somam na categoria pai; tocar na categoria mostra o detalhe.
+- **Cores dos gráficos**: azul (entradas) e âmbar (saídas), testados para daltonismo; vermelho e verde
+  aparecem só em textos que já têm sinal (+/−) ou seta.
+- **Orçamentos** são por categoria principal de despesa (incluem as subcategorias) e valem todo mês.
+  Situação: dentro (< 80%), atenção (80–100%) e estourou (> 100%), sempre com ícone e texto.
+  O "ritmo" projeta o gasto até o fim do mês pela média diária até hoje.
+- **Metas** podem ser acompanhadas por registro manual (guardar/retirar) ou pelo saldo de uma conta.
+  Com prazo, o app calcula quanto guardar por mês. Guardar numa meta não tira dinheiro de nenhuma conta.
+- **Backup** é um JSON com todas as tabelas (inclusive excluídas, para o sync futuro) e a versão do esquema.
+  Restaurar valida o arquivo, substitui tudo numa transação e desfaz se algo der errado; aceita backups
+  de versões antigas do esquema. A **planilha** é CSV no padrão brasileiro (`;`, vírgula decimal, UTF-8 com BOM),
+  abre direto no Excel.
+- **Bloqueio**: Face ID/digital (ou o PIN do aparelho). Pede de novo depois de 1 minuto fora do app e
+  cobre a tela no alternador de apps. Só liga se o aparelho tiver biometria ou senha configurada.
 - **Dados da versão 1**: na primeira abertura, a tabela antiga `transacoes` é convertida
   (valores para centavos, datas para ISO, tipo preservado) e renomeada para
   `legacy_transacoes_v1` como cópia de segurança. Transações com valor zero são ignoradas.
@@ -116,6 +141,8 @@ src/
 - Na web as preferências (tema, ocultar valores) usam `localStorage`; no celular, o kv-store do expo-sqlite.
 - Na web, o expo-sqlite tem um tempo-limite curto para consultas síncronas e às vezes acusa
   "Sync operation timeout" em recargas rápidas. No Android/iOS o acesso é direto e isso não acontece.
+- O bloqueio com biometria não existe na web. Backup e planilha na web viram download, e restaurar abre o seletor de arquivo.
+- No Expo Go o Face ID usa a permissão do próprio Expo Go; num build próprio, a mensagem configurada no `app.json`.
 
 ## Roteiro
 
@@ -127,5 +154,5 @@ src/
       estornos, pagamento total ou parcial da fatura
 - [x] **Fase 4**: contas a pagar e a receber, recorrências (com débito automático e valor variável),
       lembretes de vencimento, saldo previsto para o fim do mês
-- [ ] **Fase 5**: dashboard novo, orçamentos por categoria, metas, backup/exportação, biometria
+- [x] **Fase 5**: dashboard novo, orçamentos por categoria, metas, backup/exportação, biometria
 - [ ] **Sync**: login e sincronização com o Supabase (fila local + `updated_at`, RLS por usuário)

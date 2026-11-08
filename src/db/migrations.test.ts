@@ -198,4 +198,32 @@ describe('migrate', () => {
     expect(raw.prepare('SELECT count(*) AS n FROM recurrences').get()).toEqual({ n: 0 });
     expect(raw.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
   });
+
+  it('atualiza um banco da versão 4 (com recorrência e conta a pagar) para a 5', async () => {
+    const raw = openTestDb();
+    const db = adapter(raw);
+    for (const m of MIGRATIONS.slice(0, 4)) await m.up(db);
+    raw.exec('PRAGMA user_version = 4');
+    raw.exec(`INSERT INTO recurrences (id, kind, amount_cents, description, account_id, frequency, start_on, created_at, updated_at)
+              VALUES ('r1', 'expense', 150000, 'Aluguel', 'acc-default-wallet', 'monthly', '2026-11-05', 'x', 'x')`);
+    raw.exec(`INSERT INTO transactions (id, kind, amount_cents, description, account_id, category_id, occurred_on, status, due_on, recurrence_id, created_at, updated_at)
+              VALUES ('r1@2026-11-05', 'expense', 150000, 'Aluguel', 'acc-default-wallet', 'sub-home-rent', '2026-11-05', 'pending', '2026-11-05', 'r1', 'x', 'x')`);
+
+    expect(await migrate(db)).toEqual({ from: 4, to: LATEST_VERSION });
+    expect(
+      raw
+        .prepare(
+          "SELECT status, due_on, recurrence_id FROM transactions WHERE id = 'r1@2026-11-05'",
+        )
+        .get(),
+    ).toEqual({
+      status: 'pending',
+      due_on: '2026-11-05',
+      recurrence_id: 'r1',
+    });
+    for (const t of ['budgets', 'goals', 'goal_entries']) {
+      expect(raw.prepare(`SELECT count(*) AS n FROM ${t}`).get()).toEqual({ n: 0 });
+    }
+    expect(raw.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+  });
 });

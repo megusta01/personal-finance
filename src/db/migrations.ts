@@ -343,6 +343,52 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 5,
+    name: 'orçamentos e metas',
+    up: async (db) => {
+      await db.execAsync(`
+        CREATE TABLE budgets (
+          id            TEXT PRIMARY KEY NOT NULL,
+          category_id   TEXT NOT NULL REFERENCES categories(id),
+          amount_cents  INTEGER NOT NULL CHECK (amount_cents > 0),
+          created_at    TEXT NOT NULL,
+          updated_at    TEXT NOT NULL,
+          deleted_at    TEXT
+        );
+        CREATE INDEX idx_budgets_category   ON budgets (category_id);
+        CREATE INDEX idx_budgets_updated_at ON budgets (updated_at);
+
+        CREATE TABLE goals (
+          id            TEXT PRIMARY KEY NOT NULL,
+          name          TEXT NOT NULL,
+          target_cents  INTEGER NOT NULL CHECK (target_cents > 0),
+          target_date   TEXT CHECK (target_date IS NULL OR target_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
+          color         TEXT NOT NULL,
+          icon          TEXT NOT NULL,
+          account_id    TEXT REFERENCES accounts(id),
+          archived_at   TEXT,
+          created_at    TEXT NOT NULL,
+          updated_at    TEXT NOT NULL,
+          deleted_at    TEXT
+        );
+        CREATE INDEX idx_goals_updated_at ON goals (updated_at);
+
+        CREATE TABLE goal_entries (
+          id            TEXT PRIMARY KEY NOT NULL,
+          goal_id       TEXT NOT NULL REFERENCES goals(id),
+          amount_cents  INTEGER NOT NULL CHECK (amount_cents <> 0),
+          occurred_on   TEXT NOT NULL CHECK (occurred_on GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
+          note          TEXT,
+          created_at    TEXT NOT NULL,
+          updated_at    TEXT NOT NULL,
+          deleted_at    TEXT
+        );
+        CREATE INDEX idx_goal_entries_goal       ON goal_entries (goal_id);
+        CREATE INDEX idx_goal_entries_updated_at ON goal_entries (updated_at);
+      `);
+    },
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1]!.version;

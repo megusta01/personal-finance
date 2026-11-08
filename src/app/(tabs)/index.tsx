@@ -26,6 +26,10 @@ import {
   TX_TABLES,
 } from '@/features/transactions/repository';
 import { BillRow } from '@/features/bills/BillRow';
+import { BudgetBadge, BudgetBar } from '@/features/budgets/BudgetBar';
+import { budgetStatus, budgetSummary, levelOf } from '@/features/budgets/repository';
+import { GoalCard } from '@/features/goals/GoalCard';
+import { listGoals } from '@/features/goals/repository';
 import { projectedBalance } from '@/features/bills/repository';
 import { CardVisual } from '@/features/cards/CardVisual';
 import { STATUS_META } from '@/features/cards/meta';
@@ -64,11 +68,15 @@ export default function Home() {
       accounts: listAccountsWithBalance(db),
       cards: listCardsOverview(db),
       projected: projectedBalance(db),
+      budget: budgetSummary(budgetStatus(db, month)),
+      goals: listGoals(db)
+        .filter((g) => !g.done)
+        .slice(0, 2),
       upcoming: [...listPending(db, 'expense', week), ...listPending(db, 'income', week)].sort(
         (a, b) => (a.dueOn ?? a.occurredOn).localeCompare(b.dueOn ?? b.occurredOn),
       ),
     }),
-    [...TX_TABLES, 'recurrences'],
+    [...TX_TABLES, 'recurrences', 'budgets', 'goals', 'goal_entries'],
     [month, week],
   );
 
@@ -204,7 +212,48 @@ export default function Home() {
         </>
       )}
 
-      <SectionHeader title="Últimos 6 meses" />
+      {(data?.budget.limitCents ?? 0) > 0 && (
+        <Pressable
+          onPress={() => router.push('/orcamentos')}
+          accessibilityRole="button"
+          accessibilityHint="Abre os orçamentos"
+        >
+          <Surface style={{ padding: space.lg, gap: space.sm }}>
+            <View
+              style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+            >
+              <Text variant="bodyStrong">Orçamento do mês</Text>
+              <BudgetBadge level={levelOf(data!.budget.ratio)} />
+            </View>
+            <BudgetBar ratio={data!.budget.ratio} level={levelOf(data!.budget.ratio)} />
+            <Text variant="caption" tone="muted">
+              <Money cents={data!.budget.spentCents} variant="caption" tone="default" /> de{' '}
+              <Money cents={data!.budget.limitCents} variant="caption" tone="muted" />
+              {data!.budget.over > 0
+                ? `, ${data!.budget.over} categoria${data!.budget.over > 1 ? 's' : ''} acima do limite`
+                : ''}
+            </Text>
+          </Surface>
+        </Pressable>
+      )}
+
+      {(data?.goals.length ?? 0) > 0 && (
+        <>
+          <SectionHeader title="Metas" action={<SeeAll label="Ver todas" href="/metas" />} />
+          {data!.goals.map((g) => (
+            <GoalCard key={g.id} goal={g} onPress={() => router.push(`/meta/${g.id}`)} />
+          ))}
+        </>
+      )}
+
+      <SectionHeader
+        title="Últimos 6 meses"
+        action={<SeeAll label="Relatórios" href="/relatorios" />}
+      />
       <Surface style={{ padding: space.lg }}>
         <MonthlyChart data={data?.series ?? []} current={month} />
       </Surface>

@@ -19,6 +19,7 @@ import { ToastProvider } from '@/components/ui';
 import { DATABASE_NAME, DbProvider } from '@/db/client';
 import { migrate } from '@/db/migrations';
 import { BackgroundJobs } from '@/features/reminders/BackgroundJobs';
+import { LockGate } from '@/features/security/LockGate';
 import { AppThemeProvider, useTheme } from '@/theme/ThemeProvider';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -55,7 +56,9 @@ export default function RootLayout() {
               <DbProvider>
                 <BackgroundJobs />
                 <ToastProvider>
-                  <Navigation />
+                  <LockGate>
+                    <Navigation />
+                  </LockGate>
                 </ToastProvider>
               </DbProvider>
             </SQLiteProvider>
@@ -110,6 +113,13 @@ function Navigation() {
         <Stack.Screen name="pagamentos/pagar/[id]" options={{ presentation: 'modal' }} />
         <Stack.Screen name="recorrencias" />
         <Stack.Screen name="recorrencia/[id]" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="relatorios" />
+        <Stack.Screen name="orcamentos" />
+        <Stack.Screen name="orcamento/editar" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="metas" />
+        <Stack.Screen name="meta/[id]" />
+        <Stack.Screen name="meta/editar" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="meta/movimentar/[id]" options={{ presentation: 'modal' }} />
         <Stack.Screen name="cambio" />
       </Stack>
     </ThemeProvider>

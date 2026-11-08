@@ -30,6 +30,15 @@ export type Palette = {
   expenseSoft: string;
   danger: string;
   overlay: string;
+  /**
+   * Séries de gráfico (entradas x saídas). Azul x âmbar em vez de verde x vermelho:
+   * o par passa no teste de daltonismo (deuteranopia/protanopia) nos dois temas.
+   */
+  chartIn: string;
+  chartOut: string;
+  /** Série de referência (mês anterior): neutra. */
+  chartRef: string;
+  grid: string;
 };
 
 export const light: Palette = {
@@ -54,6 +63,10 @@ export const light: Palette = {
   expenseSoft: '#F7E1DF',
   danger: '#B9423E',
   overlay: 'rgba(8, 20, 24, 0.45)',
+  chartIn: '#1A7FB8',
+  chartOut: '#D07A1E',
+  chartRef: '#9AA6AA',
+  grid: '#E6EBEA',
 };
 
 export const dark: Palette = {
@@ -78,6 +91,10 @@ export const dark: Palette = {
   expenseSoft: '#3A1D1B',
   danger: '#EF7B72',
   overlay: 'rgba(0, 0, 0, 0.6)',
+  chartIn: '#3A97D4',
+  chartOut: '#C47820',
+  chartRef: '#5F7377',
+  grid: '#1F2E32',
 };
 
 export const font = {

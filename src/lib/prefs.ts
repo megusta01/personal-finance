@@ -17,6 +17,8 @@ type Prefs = {
   reminderHour: number;
   /** Avisar também N dias antes (0 = só no dia). */
   reminderDaysBefore: number;
+  /** Pedir biometria (ou senha do aparelho) para abrir o app. */
+  lockEnabled: boolean;
 };
 
 const KEYS = {
@@ -25,6 +27,7 @@ const KEYS = {
   remindersEnabled: 'pref.reminders',
   reminderHour: 'pref.reminderHour',
   reminderDaysBefore: 'pref.reminderDaysBefore',
+  lockEnabled: 'pref.lock',
 } as const;
 
 function readInt(key: string, fallback: number, min: number, max: number) {
@@ -39,6 +42,7 @@ function read(): Prefs {
     remindersEnabled: false,
     reminderHour: 9,
     reminderDaysBefore: 1,
+    lockEnabled: false,
   };
   try {
     const t = kv.get(KEYS.theme);
@@ -47,6 +51,7 @@ function read(): Prefs {
     prefs.remindersEnabled = kv.get(KEYS.remindersEnabled) === '1';
     prefs.reminderHour = readInt(KEYS.reminderHour, 9, 0, 23);
     prefs.reminderDaysBefore = readInt(KEYS.reminderDaysBefore, 1, 0, 7);
+    prefs.lockEnabled = kv.get(KEYS.lockEnabled) === '1';
   } catch {
     // sem armazenamento disponível: usa o padrão
   }
@@ -86,6 +91,14 @@ export function setReminderPrefs(
     if (p.reminderHour !== undefined) kv.set(KEYS.reminderHour, String(p.reminderHour));
     if (p.reminderDaysBefore !== undefined)
       kv.set(KEYS.reminderDaysBefore, String(p.reminderDaysBefore));
+  } catch {}
+  emit();
+}
+
+export function setLockEnabled(lockEnabled: boolean) {
+  current = { ...current, lockEnabled };
+  try {
+    kv.set(KEYS.lockEnabled, lockEnabled ? '1' : '0');
   } catch {}
   emit();
 }
