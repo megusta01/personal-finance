@@ -196,8 +196,29 @@ Play Store).
    está "Tudo sincronizado"; depois, no app instalado, entre na sua conta (Mais > Sincronização na
    nuvem) e tudo é baixado.
 
-**Versões novas:** rode o mesmo `eas build` e instale o APK por cima: os dados ficam. A versão que
-aparece no app vem de `version` no `app.json`; o número interno (versionCode) a Expo controla sozinha.
+### Atualizações sem APK novo (EAS Update)
+
+A maior parte das mudanças (telas, textos, regras, correções) chega sozinha no celular:
+
+```bash
+eas update --channel preview --environment preview --message "o que mudou"
+```
+
+O app procura versão nova ao abrir e ao voltar do segundo plano (no máximo a cada 30 min). Quando
+ela termina de baixar, aparece "Nova versão do app pronta" com o botão **Reiniciar**; se ignorar,
+ela vale na próxima abertura. Em Mais, no rodapé, aparece "atualizada em …" quando o app está
+rodando uma atualização.
+
+**Quando precisa de APK novo:** mudanças na parte nativa (biblioteca nativa nova, ícone, nome,
+permissões, versão do Expo, `version` no `app.json`). O `runtimeVersion` usa a política
+`fingerprint`: cada APK só aceita atualizações feitas para a mesma parte nativa, então uma
+atualização incompatível nunca chega a um APK antigo. O `eas update` avisa quando não existe
+APK compatível; aí rode `eas build --platform android --profile preview` e instale por cima
+(os dados ficam).
+
+Configuração inicial (uma vez, já feita neste projeto): `npx expo install expo-updates`,
+`eas update:configure` (grava `updates.url` no `app.json` e o `channel` de cada perfil no
+`eas.json`) e `"runtimeVersion": { "policy": "fingerprint" }` no `app.json`.
 
 Os ícones ficam em `assets/` (fontes em SVG em `assets/source/`).
 
@@ -265,5 +286,6 @@ Enquanto isso o app continua funcionando e envia tudo quando a nuvem voltar.
       lembretes de vencimento, saldo previsto para o fim do mês
 - [x] **Fase 5**: dashboard novo, orçamentos por categoria, metas, backup/exportação, biometria
 - [x] **Versão 3.0**: ícone próprio e build Android (EAS) para instalar sem o Expo Go
+- [x] **Versão 3.1**: atualizações automáticas sem APK novo (EAS Update)
 - [x] **Fase 6, sync**: login com e-mail e senha, sincronização com o Supabase (fila local, última
       edição vence, RLS por usuário), vários aparelhos, sair apagando os dados do aparelho

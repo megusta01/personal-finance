@@ -21,6 +21,7 @@ import { migrate } from '@/db/migrations';
 import { BackgroundJobs } from '@/features/reminders/BackgroundJobs';
 import { LockGate } from '@/features/security/LockGate';
 import { SyncManager } from '@/features/sync/SyncManager';
+import { UpdateManager } from '@/features/updates/UpdateManager';
 import { CrossOriginGate } from '@/features/web/CrossOriginGate';
 import { AppThemeProvider, useTheme } from '@/theme/ThemeProvider';
 
@@ -60,6 +61,7 @@ export default function RootLayout() {
                   <BackgroundJobs />
                   <SyncManager />
                   <ToastProvider>
+                    <UpdateManager />
                     <LockGate>
                       <Navigation />
                     </LockGate>

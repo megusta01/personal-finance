@@ -42,6 +42,7 @@ import {
   type ThemePref,
 } from '@/lib/prefs';
 import { syncConfigured } from '@/features/sync/client';
+import { versionLabel } from '@/features/updates/version';
 import { useSyncStatus } from '@/features/sync/service';
 import { useSession } from '@/features/sync/session';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -418,7 +419,7 @@ export default function Mais() {
       />
 
       <Text variant="caption" tone="subtle" align="center" style={{ marginTop: space.lg }}>
-        Finanças, versão {Constants.expoConfig?.version ?? '2.0.0'}
+        Finanças, {versionLabel()}
       </Text>
     </Screen>
   );
