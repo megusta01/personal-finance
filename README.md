@@ -165,10 +165,13 @@ supabase/schema.sql       tabelas, RLS e gatilhos da nuvem (gerado; cole no SQL 
 Opcional: sem isso o app funciona normalmente, só no aparelho. O plano gratuito do Supabase basta.
 
 1. **Crie o projeto** em [supabase.com](https://supabase.com) (New project). Guarde a senha do banco.
-2. **Crie as tabelas**: no painel, abra **SQL Editor > New query**, cole o conteúdo de
+2. **Ligue o Data API**: em **Project Settings > Data API**, confira se ele está **ativado** (em alguns
+   projetos novos ele vem desligado) e se `public` está em **Exposed schemas**. Sem isso, a
+   sincronização falha com "Could not query the database for the schema cache" (PGRST002).
+3. **Crie as tabelas**: no painel, abra **SQL Editor > New query**, cole o conteúdo de
    `supabase/schema.sql` e clique em **Run**. Os avisos "already exists, skipping" são normais.
    Rode de novo sempre que uma versão nova do app trouxer um `schema.sql` diferente.
-3. **Código no e-mail** (o app pede o código, não o link): em **Authentication > Emails**, nos modelos
+4. **Código no e-mail** (o app pede o código, não o link): em **Authentication > Emails**, nos modelos
    **Confirm signup** e **Reset password**, troque o conteúdo por algo como
    `<p>Seu código: <strong>{{ .Token }}</strong></p>`.
    - Alternativa para uso só seu: em **Authentication > Sign In / Providers > Email**, desligue
@@ -176,17 +179,18 @@ Opcional: sem isso o app funciona normalmente, só no aparelho. O plano gratuito
    - O envio de e-mails padrão do Supabase é limitado (poucos por hora e, em projetos novos, só para
      os e-mails da equipe do projeto). Para outras pessoas usarem, configure um SMTP próprio
      (Authentication > Emails > SMTP Settings).
-4. **Ligue o app ao projeto**: copie `.env.example` para `.env` e preencha com a **URL** e a
+5. **Ligue o app ao projeto**: copie `.env.example` para `.env` e preencha com a **URL** e a
    **Publishable key** (botão **Connect** no topo do painel, ou Project Settings > API Keys).
    O nome da chave pode ser `EXPO_PUBLIC_SUPABASE_KEY` (o que o painel sugere),
    `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` ou `EXPO_PUBLIC_SUPABASE_ANON_KEY`; o app aceita os três.
    Projetos antigos podem usar a chave `anon` no lugar da publishable. As duas são públicas por
    natureza (quem protege os dados é o RLS); nunca coloque a `service_role`/`secret` no app.
-5. Reinicie com `npx expo start --clear` (variáveis do `.env` só entram ao reiniciar).
+6. Reinicie com `npx expo start --clear` (variáveis do `.env` só entram ao reiniciar).
    No app: **Mais > Sincronização na nuvem > Criar conta**.
 
 **Se aparecer "Could not query the database for the schema cache" (PGRST002)**: é o servidor de
-dados do Supabase sem conseguir ler a estrutura do banco, comum logo depois de criar o projeto,
+dados do Supabase sem conseguir ler a estrutura do banco. Primeiro confira se o **Data API está
+ativado** (Project Settings > Data API). Também é comum logo depois de criar o projeto,
 rodar o SQL ou reativar um projeto pausado. O app tenta de novo sozinho. Se passar de alguns
 minutos: rode `notify pgrst, 'reload schema';` no SQL Editor; se continuar, reinicie o projeto
 (Project Settings > General > Restart project) e confira em Settings > Data API se o schema
