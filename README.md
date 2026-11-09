@@ -160,6 +160,47 @@ supabase/schema.sql       tabelas, RLS e gatilhos da nuvem (gerado; cole no SQL 
   (valores para centavos, datas para ISO, tipo preservado) e renomeada para
   `legacy_transacoes_v1` como cópia de segurança. Transações com valor zero são ignoradas.
 
+## Instalar no Android (sem o Expo Go)
+
+O app é compilado nos servidores da Expo (EAS Build, plano gratuito) e vira um APK que você instala
+direto no celular. Configuração em `eas.json` (perfil `preview` = APK; `production` = AAB para a
+Play Store).
+
+1. Crie uma conta gratuita em [expo.dev](https://expo.dev/signup).
+2. No terminal, na pasta do projeto:
+   ```bash
+   npm install -g eas-cli
+   eas login
+   eas init            # cria o projeto na Expo e grava o projectId no app.json (faça commit)
+   ```
+3. **Variáveis do Supabase no EAS.** O `.env` não vai para o build (está no `.gitignore`), então
+   cadastre as mesmas duas variáveis no ambiente `preview`:
+   ```bash
+   eas env:create --environment preview --name EXPO_PUBLIC_SUPABASE_URL --value "https://SEU-PROJETO.supabase.co" --visibility plaintext
+   eas env:create --environment preview --name EXPO_PUBLIC_SUPABASE_KEY --value "sb_publishable_..." --visibility plaintext
+   ```
+   (Ou pelo site: expo.dev > seu projeto > Environment variables.) Para o perfil `production`,
+   cadastre também no ambiente `production`.
+4. **Gere o APK:**
+   ```bash
+   eas build --platform android --profile preview
+   ```
+   Na primeira vez ele pergunta se pode criar a chave de assinatura (Keystore): responda que sim.
+   A Expo guarda essa chave; ela é o que permite instalar versões novas por cima sem perder dados.
+   O build leva de 10 a 20 minutos (às vezes há fila no plano gratuito) e termina com um link e um
+   QR code.
+5. **Instale:** abra o link no celular, baixe o APK e toque nele. O Android pede para permitir
+   "instalar apps desconhecidos" para o navegador; o Play Protect pode avisar que o app não é
+   conhecido: toque em "Instalar mesmo assim".
+6. **Dados:** o app instalado é separado do Expo Go e começa vazio. Antes, confira no Expo Go que
+   está "Tudo sincronizado"; depois, no app instalado, entre na sua conta (Mais > Sincronização na
+   nuvem) e tudo é baixado.
+
+**Versões novas:** rode o mesmo `eas build` e instale o APK por cima: os dados ficam. A versão que
+aparece no app vem de `version` no `app.json`; o número interno (versionCode) a Expo controla sozinha.
+
+Os ícones ficam em `assets/` (fontes em SVG em `assets/source/`).
+
 ## Sincronização com o Supabase
 
 Opcional: sem isso o app funciona normalmente, só no aparelho. O plano gratuito do Supabase basta.
@@ -223,5 +264,6 @@ Enquanto isso o app continua funcionando e envia tudo quando a nuvem voltar.
 - [x] **Fase 4**: contas a pagar e a receber, recorrências (com débito automático e valor variável),
       lembretes de vencimento, saldo previsto para o fim do mês
 - [x] **Fase 5**: dashboard novo, orçamentos por categoria, metas, backup/exportação, biometria
+- [x] **Versão 3.0**: ícone próprio e build Android (EAS) para instalar sem o Expo Go
 - [x] **Fase 6, sync**: login com e-mail e senha, sincronização com o Supabase (fila local, última
       edição vence, RLS por usuário), vários aparelhos, sair apagando os dados do aparelho
