@@ -3,6 +3,7 @@ import type { AppDb } from '@/db/client';
 import { generateAll } from '@/features/recurrences/repository';
 import { supabase } from './client';
 import { linkedUser, syncOnce, type SyncResult } from './engine';
+import type { LiveStatus } from './live';
 import { currentSession } from './session';
 import { RemoteError, supabaseRemote } from './supabaseRemote';
 
@@ -13,13 +14,20 @@ export type SyncStatus = {
   running: boolean;
   error: { kind: SyncErrorKind; message: string; at: number } | null;
   last: SyncResult | null;
+  /** Atualização ao vivo (avisos da nuvem). */
+  live: { status: LiveStatus; detail?: string };
 };
 
-let status: SyncStatus = { running: false, error: null, last: null };
+let status: SyncStatus = { running: false, error: null, last: null, live: { status: 'off' } };
 const listeners = new Set<() => void>();
 function setStatus(patch: Partial<SyncStatus>) {
   status = { ...status, ...patch };
   listeners.forEach((l) => l());
+}
+
+export function setLiveStatus(s: LiveStatus, detail?: string) {
+  if (status.live.status === s && status.live.detail === detail) return;
+  setStatus({ live: { status: s, detail } });
 }
 
 export function useSyncStatus(): SyncStatus {
@@ -97,7 +105,7 @@ let again = false;
  */
 export function requestSync(
   db: AppDb,
-  reason: 'manual' | 'start' | 'resume' | 'timer' | 'change' = 'manual',
+  reason: 'manual' | 'start' | 'resume' | 'timer' | 'change' | 'live' = 'manual',
 ): Promise<void> {
   const session = currentSession();
   if (!supabase || !session) return Promise.resolve();

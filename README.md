@@ -73,7 +73,7 @@ src/
     goals/                metas: progresso, quanto guardar por mês, entradas e retiradas
     backup/               backup JSON (criar, validar, restaurar), planilha CSV, salvar/abrir arquivos
     security/             bloqueio com biometria (LockGate) e autenticação
-    sync/                 engine.ts (envio/recebimento), cliente e login do Supabase, SyncManager,
+    sync/                 engine.ts (envio/recebimento), live.ts (ao vivo), cliente e login do Supabase, SyncManager,
                           remoteSchema.ts (gera o SQL da nuvem)
 supabase/schema.sql       tabelas, RLS e gatilhos da nuvem (gerado; cole no SQL Editor)
     catalog/              metadados locais (app_meta)
@@ -151,7 +151,12 @@ supabase/schema.sql       tabelas, RLS e gatilhos da nuvem (gerado; cole no SQL 
     sempre perdem para uma edição de verdade (um celular novo não desfaz o nome que você deu a uma
     categoria). Orçamento tem ID fixo por categoria, para não duplicar entre aparelhos.
   - Na nuvem a chave é (`user_id`, `id`) e o RLS só deixa cada conta ler e gravar as próprias linhas.
-  - Quando: ao entrar, ao abrir/voltar para o app, 3 s depois de cada alteração e a cada 5 minutos.
+  - Quando: ao entrar, ao abrir/voltar para o app, ~1 s depois de cada alteração, a cada 5 minutos e,
+    com a **atualização ao vivo**, assim que outro aparelho muda algo.
+  - **Ao vivo** (Supabase Realtime, `postgres_changes` filtrado por `user_id`, com RLS): o aviso só
+    dispara um recebimento normal (mesmo cursor e mesma regra de conflito); avisos do que o aparelho
+    já tem são ignorados. Conectado só com o app em primeiro plano; ao reconectar, busca o que perdeu.
+    O estado aparece em Mais › Sincronização na nuvem.
   - **Primeiro login**: o que já está no aparelho se junta à conta. **Sair da conta** apaga os dados do
     aparelho (avisa se algo ainda não subiu); eles voltam ao entrar de novo. Se o aparelho tiver
     dados de outra conta, o app não mistura: pede para apagar antes.
@@ -170,7 +175,8 @@ Opcional: sem isso o app funciona normalmente, só no aparelho. O plano gratuito
    sincronização falha com "Could not query the database for the schema cache" (PGRST002).
 3. **Crie as tabelas**: no painel, abra **SQL Editor > New query**, cole o conteúdo de
    `supabase/schema.sql` e clique em **Run**. Os avisos "already exists, skipping" são normais.
-   Rode de novo sempre que uma versão nova do app trouxer um `schema.sql` diferente.
+   Rode de novo sempre que uma versão nova do app trouxer um `schema.sql` diferente (a versão 2.6
+   acrescenta as tabelas à atualização ao vivo, no fim do arquivo).
 4. **Código no e-mail** (o app pede o código, não o link): em **Authentication > Emails**, nos modelos
    **Confirm signup** e **Reset password**, troque o conteúdo por algo como
    `<p>Seu código: <strong>{{ .Token }}</strong></p>`.
@@ -187,6 +193,10 @@ Opcional: sem isso o app funciona normalmente, só no aparelho. O plano gratuito
    natureza (quem protege os dados é o RLS); nunca coloque a `service_role`/`secret` no app.
 6. Reinicie com `npx expo start --clear` (variáveis do `.env` só entram ao reiniciar).
    No app: **Mais > Sincronização na nuvem > Criar conta**.
+
+**Ao vivo não liga** ("Ao vivo indisponível" na tela de sincronização): rode o `schema.sql` de novo
+e confira em **Database › Publications** se `supabase_realtime` tem as 8 tabelas do app. Sem o ao
+vivo, tudo continua sincronizando ao abrir o app e a cada 5 minutos.
 
 **Se aparecer "Could not query the database for the schema cache" (PGRST002)**: é o servidor de
 dados do Supabase sem conseguir ler a estrutura do banco. Primeiro confira se o **Data API está
@@ -223,5 +233,6 @@ Enquanto isso o app continua funcionando e envia tudo quando a nuvem voltar.
 - [x] **Fase 4**: contas a pagar e a receber, recorrências (com débito automático e valor variável),
       lembretes de vencimento, saldo previsto para o fim do mês
 - [x] **Fase 5**: dashboard novo, orçamentos por categoria, metas, backup/exportação, biometria
+- [x] **Fase 7, ao vivo**: atualização ao vivo entre aparelhos (Supabase Realtime)
 - [x] **Fase 6, sync**: login com e-mail e senha, sincronização com o Supabase (fila local, última
       edição vence, RLS por usuário), vários aparelhos, sair apagando os dados do aparelho

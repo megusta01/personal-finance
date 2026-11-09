@@ -319,3 +319,22 @@ grant select, insert, update on public.goal_entries to authenticated;
 drop trigger if exists goal_entries_sync on public.goal_entries;
 create trigger goal_entries_sync before insert or update on public.goal_entries
   for each row execute function public.finance_sync_row();
+
+-- Atualização ao vivo (Supabase Realtime): as tabelas entram na publicação
+-- supabase_realtime, que avisa o app quando uma linha muda. O RLS continua valendo:
+-- cada conta só recebe avisos das próprias linhas.
+do $$
+declare t text;
+begin
+  if exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
+    foreach t in array array['accounts', 'categories', 'credit_cards', 'recurrences', 'transactions', 'budgets', 'goals', 'goal_entries'] loop
+      if not exists (
+        select 1 from pg_publication_tables
+        where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t
+      ) then
+        execute format('alter publication supabase_realtime add table public.%I', t);
+      end if;
+    end loop;
+  end if;
+end;
+$$;

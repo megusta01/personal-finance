@@ -88,5 +88,24 @@ begin
 end;
 $$;
 `;
-  return [header, ...SYNC_TABLES.map((t) => tableSql(t, columnsOf(t)))].join('\n');
+  const realtime = `-- Atualização ao vivo (Supabase Realtime): as tabelas entram na publicação
+-- supabase_realtime, que avisa o app quando uma linha muda. O RLS continua valendo:
+-- cada conta só recebe avisos das próprias linhas.
+do $$
+declare t text;
+begin
+  if exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
+    foreach t in array array[${SYNC_TABLES.map((t) => `'${t}'`).join(', ')}] loop
+      if not exists (
+        select 1 from pg_publication_tables
+        where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t
+      ) then
+        execute format('alter publication supabase_realtime add table public.%I', t);
+      end if;
+    end loop;
+  end if;
+end;
+$$;
+`;
+  return [header, ...SYNC_TABLES.map((t) => tableSql(t, columnsOf(t))), realtime].join('\n');
 }

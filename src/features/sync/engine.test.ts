@@ -78,6 +78,27 @@ beforeEach(async () => {
 afterEach(() => vi.useRealTimers());
 
 describe('sincronização', () => {
+  it('põe as tabelas na publicação do Realtime (quando ela existe, como no Supabase)', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { SCHEMA_SQL_PATH } = await import('@/test/cloud');
+    await cloud.pg.exec('create publication supabase_realtime');
+    await cloud.pg.exec(readFileSync(SCHEMA_SQL_PATH, 'utf8'));
+    await cloud.pg.exec(readFileSync(SCHEMA_SQL_PATH, 'utf8')); // de novo: sem erro
+    const res = await cloud.pg.query<{ tablename: string }>(
+      `select tablename from pg_publication_tables where pubname = 'supabase_realtime' order by 1`,
+    );
+    expect(res.rows.map((r) => r.tablename)).toEqual([
+      'accounts',
+      'budgets',
+      'categories',
+      'credit_cards',
+      'goal_entries',
+      'goals',
+      'recurrences',
+      'transactions',
+    ]);
+  });
+
   it('o SQL da nuvem pode ser rodado de novo sem erro', async () => {
     const { readFileSync } = await import('node:fs');
     const { SCHEMA_SQL_PATH } = await import('@/test/cloud');

@@ -162,6 +162,29 @@ function StatusLine() {
   );
 }
 
+function LiveLine() {
+  const { colors } = useTheme();
+  const { live } = useSyncStatus();
+  const map = {
+    live: { color: colors.income, text: 'Ao vivo: mudanças de outros aparelhos chegam na hora' },
+    connecting: { color: colors.accent, text: 'Ligando a atualização ao vivo…' },
+    error: {
+      color: colors.textSubtle,
+      text: 'Ao vivo indisponível agora. Tentando de novo; enquanto isso, sincroniza a cada 5 min.',
+    },
+    off: { color: colors.textSubtle, text: 'Ao vivo desligado (app em segundo plano)' },
+  } as const;
+  const item = map[live.status];
+  return (
+    <View style={styles.live} accessibilityLabel={item.text}>
+      <View style={[styles.dot, { backgroundColor: item.color }]} />
+      <Text variant="caption" tone="muted" style={{ flex: 1 }}>
+        {item.text}
+      </Text>
+    </View>
+  );
+}
+
 function SignedIn({ email }: { email: string }) {
   const { colors } = useTheme();
   const db = useDb();
@@ -209,6 +232,7 @@ function SignedIn({ email }: { email: string }) {
         />
         <Divider inset={space.lg} />
         <StatusLine />
+        <LiveLine />
         <View style={{ padding: space.lg, paddingTop: 0, gap: space.sm }}>
           {status.error?.kind === 'other-account' ? (
             <Button
@@ -234,8 +258,9 @@ function SignedIn({ email }: { email: string }) {
       <Surface style={{ padding: space.lg, gap: space.md }}>
         <Text variant="caption" tone="muted">
           Contas, cartões, lançamentos, categorias, recorrências, orçamentos e metas vão para a
-          nuvem sozinhos, alguns segundos depois de cada alteração, ao abrir o app e a cada 5
-          minutos.
+          nuvem sozinhos, logo depois de cada alteração. Com o app aberto, o que muda em outro
+          aparelho aparece aqui na hora (atualização ao vivo); sem conexão ao vivo, sincroniza ao
+          abrir e a cada 5 minutos.
         </Text>
         <Text variant="caption" tone="muted">
           Se a mesma coisa for editada em dois aparelhos, fica a edição mais recente.
@@ -313,4 +338,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   status: { flexDirection: 'row', gap: space.md, alignItems: 'flex-start', padding: space.lg },
+  live: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    paddingHorizontal: space.lg,
+    paddingBottom: space.md,
+    marginTop: -space.sm,
+  },
+  dot: { width: 8, height: 8, borderRadius: 4 },
 });
