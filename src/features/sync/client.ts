@@ -9,8 +9,12 @@ import { authStorage } from './authStorage';
  * só no aparelho e a tela de sincronização explica como configurar.
  */
 const url = process.env.EXPO_PUBLIC_SUPABASE_URL;
+// Aceita os nomes que o painel do Supabase sugere (eles mudaram com o tempo).
+// O Expo só lê variáveis escritas por extenso assim, uma por uma.
 const key =
-  process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+  process.env.EXPO_PUBLIC_SUPABASE_KEY ??
+  process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 
 export const supabase: SupabaseClient | null =
   url && key

@@ -178,6 +178,8 @@ Opcional: sem isso o app funciona normalmente, só no aparelho. O plano gratuito
      (Authentication > Emails > SMTP Settings).
 4. **Ligue o app ao projeto**: copie `.env.example` para `.env` e preencha com a **URL** e a
    **Publishable key** (botão **Connect** no topo do painel, ou Project Settings > API Keys).
+   O nome da chave pode ser `EXPO_PUBLIC_SUPABASE_KEY` (o que o painel sugere),
+   `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` ou `EXPO_PUBLIC_SUPABASE_ANON_KEY`; o app aceita os três.
    Projetos antigos podem usar a chave `anon` no lugar da publishable. As duas são públicas por
    natureza (quem protege os dados é o RLS); nunca coloque a `service_role`/`secret` no app.
 5. Reinicie com `npx expo start --clear` (variáveis do `.env` só entram ao reiniciar).
