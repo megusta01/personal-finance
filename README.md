@@ -205,6 +205,10 @@ Enquanto isso o app continua funcionando e envia tudo quando a nuvem voltar.
 - Na web, o expo-sqlite desistia de consultas síncronas depois de poucos milissegundos
   ("Sync operation timeout"). O `patches/expo-sqlite+58.0.15.patch` troca isso por um limite de
   10 segundos; o `npm install` aplica o patch sozinho (patch-package). No Android/iOS nada muda.
+- Na web, o banco precisa de uma página "isolada" (cabeçalhos COOP/COEP). Quando o servidor não os
+  envia (o servidor de desenvolvimento do Expo esquece na página `/`), o app instala o
+  `public/coi-serviceworker.js` e recarrega uma vez. Abra sempre por `http://localhost:8081`
+  (ou um endereço `https://`): pelo IP da rede (`http://192.168…`) o navegador não libera o banco.
 - O bloqueio com biometria não existe na web. Backup e planilha na web viram download, e restaurar abre o seletor de arquivo.
 - No Expo Go o Face ID usa a permissão do próprio Expo Go; num build próprio, a mensagem configurada no `app.json`.
 

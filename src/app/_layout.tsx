@@ -21,6 +21,7 @@ import { migrate } from '@/db/migrations';
 import { BackgroundJobs } from '@/features/reminders/BackgroundJobs';
 import { LockGate } from '@/features/security/LockGate';
 import { SyncManager } from '@/features/sync/SyncManager';
+import { CrossOriginGate } from '@/features/web/CrossOriginGate';
 import { AppThemeProvider, useTheme } from '@/theme/ThemeProvider';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -44,27 +45,29 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <AppThemeProvider>
-          <Suspense fallback={<Loading />}>
-            {/* O banco só é liberado para as telas depois das migrations: acabou a corrida da v1. */}
-            <SQLiteProvider
-              databaseName={DATABASE_NAME}
-              options={{ enableChangeListener: true }}
-              onInit={async (db) => {
-                await migrate(db);
-              }}
-              useSuspense
-            >
-              <DbProvider>
-                <BackgroundJobs />
-                <SyncManager />
-                <ToastProvider>
-                  <LockGate>
-                    <Navigation />
-                  </LockGate>
-                </ToastProvider>
-              </DbProvider>
-            </SQLiteProvider>
-          </Suspense>
+          <CrossOriginGate>
+            <Suspense fallback={<Loading />}>
+              {/* O banco só é liberado para as telas depois das migrations: acabou a corrida da v1. */}
+              <SQLiteProvider
+                databaseName={DATABASE_NAME}
+                options={{ enableChangeListener: true }}
+                onInit={async (db) => {
+                  await migrate(db);
+                }}
+                useSuspense
+              >
+                <DbProvider>
+                  <BackgroundJobs />
+                  <SyncManager />
+                  <ToastProvider>
+                    <LockGate>
+                      <Navigation />
+                    </LockGate>
+                  </ToastProvider>
+                </DbProvider>
+              </SQLiteProvider>
+            </Suspense>
+          </CrossOriginGate>
         </AppThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
