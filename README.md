@@ -183,6 +183,13 @@ Opcional: sem isso o app funciona normalmente, só no aparelho. O plano gratuito
 5. Reinicie com `npx expo start --clear` (variáveis do `.env` só entram ao reiniciar).
    No app: **Mais > Sincronização na nuvem > Criar conta**.
 
+**Se aparecer "Could not query the database for the schema cache" (PGRST002)**: é o servidor de
+dados do Supabase sem conseguir ler a estrutura do banco, comum logo depois de criar o projeto,
+rodar o SQL ou reativar um projeto pausado. O app tenta de novo sozinho. Se passar de alguns
+minutos: rode `notify pgrst, 'reload schema';` no SQL Editor; se continuar, reinicie o projeto
+(Project Settings > General > Restart project) e confira em Settings > Data API se o schema
+`public` está em "Exposed schemas" e se não há nenhum schema listado ali que não exista mais.
+
 Projetos gratuitos do Supabase pausam depois de uma semana sem uso; é só reativar no painel.
 Enquanto isso o app continua funcionando e envia tudo quando a nuvem voltar.
 

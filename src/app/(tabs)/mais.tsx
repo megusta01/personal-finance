@@ -62,7 +62,7 @@ export default function Mais() {
       : syncStatus.running
         ? `${session.user.email} · sincronizando…`
         : syncStatus.error
-          ? `${session.user.email} · ${syncStatus.error.kind === 'offline' ? 'sem conexão' : 'precisa de atenção'}`
+          ? `${session.user.email} · ${syncStatus.error.kind === 'offline' ? 'sem conexão' : syncStatus.error.kind === 'unavailable' ? 'nuvem indisponível, tentando de novo' : 'precisa de atenção'}`
           : `${session.user.email} · em dia`;
 
   const { colors } = useTheme();

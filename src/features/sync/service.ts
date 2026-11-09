@@ -6,7 +6,8 @@ import { linkedUser, syncOnce, type SyncResult } from './engine';
 import { currentSession } from './session';
 import { RemoteError, supabaseRemote } from './supabaseRemote';
 
-export type SyncErrorKind = 'offline' | 'setup' | 'auth' | 'other-account' | 'unknown';
+export type SyncErrorKind =
+  'offline' | 'unavailable' | 'setup' | 'auth' | 'other-account' | 'unknown';
 
 export type SyncStatus = {
   running: boolean;
@@ -52,6 +53,13 @@ export function describeSyncError(e: unknown): { kind: SyncErrorKind; message: s
       };
     if (e.status === 401 || e.code === 'PGRST301' || e.code === 'PGRST303' || /JWT/i.test(msg))
       return { kind: 'auth', message: 'Sua sessão expirou. Entre de novo na sua conta.' };
+    // A nuvem está acordando, reiniciando ou recarregando a estrutura do banco (PGRST002, 5xx).
+    if (e.code === 'PGRST002' || (e.status !== undefined && e.status >= 500))
+      return {
+        kind: 'unavailable',
+        message:
+          'A nuvem está iniciando ou ocupada no momento. Tentamos de novo sozinhos em instantes.',
+      };
     if (e.code === '42501')
       return {
         kind: 'setup',
@@ -65,6 +73,18 @@ export function describeSyncError(e: unknown): { kind: SyncErrorKind; message: s
 }
 
 let inflight: Promise<void> | null = null;
+let retryTimer: ReturnType<typeof setTimeout> | null = null;
+let retryDelay = 15_000;
+
+/** Falha passageira: tenta de novo com espera crescente (15 s, 30 s, 1 min… até 5 min). */
+function scheduleRetry(db: AppDb) {
+  if (retryTimer) return;
+  retryTimer = setTimeout(() => {
+    retryTimer = null;
+    void requestSync(db, 'timer');
+  }, retryDelay);
+  retryDelay = Math.min(retryDelay * 2, 5 * 60_000);
+}
 let again = false;
 
 /**
@@ -83,7 +103,7 @@ export function requestSync(
   if (!supabase || !session) return Promise.resolve();
   if (
     reason === 'change' &&
-    status.error?.kind === 'offline' &&
+    (status.error?.kind === 'offline' || status.error?.kind === 'unavailable') &&
     Date.now() - status.error.at < 60_000
   )
     return Promise.resolve();
@@ -112,10 +132,12 @@ export function requestSync(
           }
         }
         setStatus({ error: null, last: result });
+        retryDelay = 15_000;
       } catch (e) {
         const d = describeSyncError(e);
         if (d.kind === 'unknown') console.warn('[sync]', e);
         setStatus({ error: { ...d, at: Date.now() } });
+        if (d.kind === 'unavailable' || d.kind === 'offline') scheduleRetry(db);
         break;
       }
     } while (again);

@@ -122,9 +122,15 @@ function StatusLine() {
     title = 'Sincronizando…';
     detail = pending ? `${pending} alterações para enviar.` : 'Conferindo novidades na nuvem.';
   } else if (status.error) {
-    icon = status.error.kind === 'offline' ? 'cloud-offline-outline' : 'alert-circle';
-    color = status.error.kind === 'offline' ? colors.textMuted : colors.danger;
-    title = status.error.kind === 'offline' ? 'Sem conexão' : 'Não foi possível sincronizar';
+    const passing = status.error.kind === 'offline' || status.error.kind === 'unavailable';
+    icon = passing ? 'cloud-offline-outline' : 'alert-circle';
+    color = passing ? colors.textMuted : colors.danger;
+    title =
+      status.error.kind === 'offline'
+        ? 'Sem conexão'
+        : status.error.kind === 'unavailable'
+          ? 'Nuvem indisponível no momento'
+          : 'Não foi possível sincronizar';
     detail = status.error.message;
   } else if (pending) {
     icon = 'time-outline';
@@ -143,7 +149,11 @@ function StatusLine() {
         <Text variant="bodyStrong">{title}</Text>
         <Text
           variant="caption"
-          tone={status.error?.kind === 'offline' ? 'muted' : status.error ? 'danger' : 'muted'}
+          tone={
+            !status.error || ['offline', 'unavailable'].includes(status.error.kind)
+              ? 'muted'
+              : 'danger'
+          }
         >
           {detail}
         </Text>
